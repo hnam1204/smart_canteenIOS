@@ -1,0 +1,191 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function admin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    function ownsExisting() {
+      return owner(resource.data.userId);
+    }
+
+    function ownsIncoming() {
+      return owner(request.resource.data.userId);
+    }
+
+    function safeUserFieldsOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'fullName',
+        'phone',
+        'email',
+        'avatarUrl',
+        'address',
+        'studentId',
+        'department',
+        'note',
+        'gender',
+        'dateOfBirth',
+        'fcmTokens',
+        'updatedAt'
+      ]);
+    }
+
+    function safeOrderCreate() {
+      return ownsIncoming()
+        && request.resource.data.orderCode is string
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.totalAmount is int
+        && request.resource.data.totalAmount >= 0
+        && request.resource.data.orderStatus in ['pending', 'preparing']
+        && request.resource.data.pickupEnabled == true
+        && request.resource.data.qrCodeData is string
+        && request.resource.data.pickupToken is string
+        && (
+          (request.resource.data.paymentMethod == 'cash'
+            && request.resource.data.paymentStatus in ['unpaid', 'cashOnPickup']) ||
+          (request.resource.data.paymentMethod == 'bankQr'
+            && request.resource.data.paymentStatus == 'pending')
+        );
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if admin();
+    }
+
+    match /foods/{foodId} {
+      allow read: if true;
+      allow write: if admin();
+    }
+
+    match /vouchers/{voucherId} {
+      allow read: if signedIn();
+      allow write: if admin();
+    }
+
+    match /app_settings/{settingId} {
+      allow read: if true;
+      allow write: if admin();
+    }
+
+    match /users/{userId} {
+      allow read: if owner(userId);
+      allow create: if owner(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.fullName is string
+        && request.resource.data.email is string
+        && request.resource.data.phone is string
+        && request.resource.data.points == 0
+        && request.resource.data.role == 'customer';
+      allow update: if owner(userId) && safeUserFieldsOnly();
+      allow delete: if false;
+
+      match /fcmTokens/{tokenId} {
+        allow read, create, update, delete: if owner(userId);
+      }
+    }
+
+    match /carts/{userId} {
+      allow read: if owner(userId);
+      allow create, update: if owner(userId)
+        && request.resource.data.userId == userId
+        && request.resource.data.items is list
+        && request.resource.data.items.size() <= 50
+        && request.resource.data.subtotal is int
+        && request.resource.data.subtotal >= 0
+        && request.resource.data.voucherDiscount is int
+        && request.resource.data.voucherDiscount >= 0
+        && request.resource.data.deliveryFee is int
+        && request.resource.data.deliveryFee >= 0
+        && request.resource.data.totalAmount is int
+        && request.resource.data.totalAmount >= 0;
+      allow delete: if owner(userId);
+    }
+
+    match /orders/{orderId} {
+      allow read: if ownsExisting();
+      allow create: if safeOrderCreate();
+      allow update: if admin() || (ownsExisting()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasReview', 'reviewId', 'reviewedAt', 'updatedAt'])
+        && request.resource.data.hasReview == true
+        && (!resource.data.keys().hasAll(['hasReview']) || resource.data.hasReview == false)
+        && exists(/databases/$(database)/documents/reviews/$(request.resource.data.reviewId))
+        && get(/databases/$(database)/documents/reviews/$(request.resource.data.reviewId)).data.orderId == orderId
+        && get(/databases/$(database)/documents/reviews/$(request.resource.data.reviewId)).data.userId == request.auth.uid);
+      allow delete: if false;
+    }
+
+    match /payments/{paymentId} {
+      allow read: if ownsExisting();
+      allow create: if ownsIncoming()
+        && request.resource.data.method == 'bankQr'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.amount is int
+        && request.resource.data.amount > 0;
+      allow update: if admin();
+      allow delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if ownsExisting();
+      allow create, delete: if admin();
+      allow update: if ownsExisting()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'isRead',
+          'updatedAt'
+        ]);
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if ownsExisting();
+      allow create: if ownsIncoming()
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.comment is string
+        && request.resource.data.tags is list
+        && exists(/databases/$(database)/documents/orders/$(request.resource.data.orderId))
+        && get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.orderStatus in ['completed', 'delivered'];
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /reward_points/{userId} {
+      allow read: if owner(userId);
+      allow write: if admin();
+    }
+
+    match /reward_histories/{historyId} {
+      allow read: if ownsExisting();
+      allow write: if admin() || ownsIncoming();
+    }
+
+    match /activity_logs/{activityId} {
+      allow read: if ownsExisting();
+      allow write: if admin() || ownsIncoming();
+    }
+
+    match /support_tickets/{ticketId} {
+      allow read: if ownsExisting() || admin();
+      allow create: if ownsIncoming()
+        && request.resource.data.status == 'processing';
+      allow update: if admin();
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

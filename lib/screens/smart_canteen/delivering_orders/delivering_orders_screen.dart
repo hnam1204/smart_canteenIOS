@@ -1,0 +1,566 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/constants/colors.dart';
+import '../../../core/navigation/app_navigator.dart';
+import '../../../core/utils/app_feedback.dart';
+import '../main_shell_screen.dart';
+import '../review/review_model.dart' as review;
+import '../review/review_screen.dart';
+import '../widgets/canteen_bottom_nav_bar.dart';
+import 'delivering_orders_controller.dart';
+import 'order_model.dart';
+import 'widgets/contact_shipper_dialog.dart';
+import 'widgets/delivering_order_card.dart';
+import 'widgets/delivering_order_detail_sheet.dart';
+import 'widgets/delivery_progress_timeline.dart';
+import 'widgets/delivery_status_banner.dart';
+import 'widgets/empty_delivering_state.dart';
+import 'widgets/map_preview_card.dart';
+
+class DeliveringOrdersScreen extends StatefulWidget {
+  const DeliveringOrdersScreen({
+    super.key,
+    this.cartCount = 0,
+    this.notificationCount = 0,
+  });
+
+  final int cartCount;
+  final int notificationCount;
+
+  @override
+  State<DeliveringOrdersScreen> createState() => _DeliveringOrdersScreenState();
+}
+
+class _DeliveringOrdersScreenState extends State<DeliveringOrdersScreen> {
+  late final DeliveringOrdersController _controller;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = DeliveringOrdersController()..load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onBottomNavTap(int index) {
+    AppNavigator.replace<void>(
+      context,
+      builder: (_) => MainShellScreen(initialIndex: index),
+    );
+  }
+
+  void _back() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+      return;
+    }
+    _onBottomNavTap(4);
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _controller.clearSearch();
+  }
+
+  void _openDetails(OrderModel order) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DeliveringOrderDetailSheet(
+        order: order,
+        onMapTap: () {
+          Navigator.pop(context);
+          _track(order);
+        },
+      ),
+    );
+  }
+
+  void _contactShipper(OrderModel order) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => ContactShipperDialog(
+        order: order,
+        onCallTap: () {
+          Navigator.pop(dialogContext);
+          showAppSnackBar(
+            context,
+            'Đang gọi ${order.delivery.shipperName}.',
+            icon: Icons.call_outlined,
+            iconColor: deliveryGreen,
+          );
+        },
+        onMessageTap: () {
+          Navigator.pop(dialogContext);
+          showAppSnackBar(
+            context,
+            'Đã mở trò chuyện với ${order.delivery.shipperName}.',
+            icon: Icons.chat_bubble_outline_rounded,
+            iconColor: deliveryGreen,
+          );
+        },
+      ),
+    );
+  }
+
+  void _track(OrderModel order) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _DeliveryTrackingSheet(order: order),
+    );
+  }
+
+  void _openReview(OrderModel order) {
+    AppNavigator.push<void>(
+      context,
+      builder: (_) => ReviewScreen(
+        order: review.ReviewOrderModel(
+          id: order.id,
+          orderedAt: order.orderedAt,
+          items: order.items
+              .map(
+                (item) => review.ReviewOrderItemModel(
+                  name: item.name,
+                  quantity: item.quantity,
+                  price: item.total,
+                  imageAsset: item.imageAsset,
+                ),
+              )
+              .toList(growable: false),
+        ),
+        cartCount: widget.cartCount,
+        notificationCount: widget.notificationCount,
+      ),
+    );
+  }
+
+  void _showFilters() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _DeliveryFilterSheet(
+        selected: _controller.filter,
+        countFor: _controller.countFor,
+        onSelected: (filter) {
+          Navigator.pop(context);
+          _controller.setFilter(filter);
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) => Scaffold(
+        backgroundColor: AppColors.background,
+        resizeToAvoidBottomInset: true,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              _Header(
+                onBackTap: _back,
+                onSearchTap: _searchFocusNode.requestFocus,
+                onFilterTap: _showFilters,
+              ),
+              const DeliveryStatusBanner(),
+              _SearchBar(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                onChanged: _controller.updateSearch,
+                onClear: _clearSearch,
+              ),
+              const SizedBox(height: 14),
+              Expanded(child: _buildContent()),
+            ],
+          ),
+        ),
+        bottomNavigationBar: CanteenBottomNavBar(
+          selectedIndex: -1,
+          cartCount: widget.cartCount,
+          notificationCount: widget.notificationCount,
+          onTap: _onBottomNavTap,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_controller.loading) return const _DeliveryLoading();
+    if (_controller.hasError) {
+      return _DeliveryError(onRetry: _controller.retry);
+    }
+    final orders = _controller.visibleOrders;
+    if (orders.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _controller.refresh,
+        color: AppColors.primary,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: 365,
+              child: EmptyDeliveringState(
+                onOrderNowTap: () => _onBottomNavTap(1),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _controller.refresh,
+      color: AppColors.primary,
+      child: ListView.builder(
+        key: const ValueKey('delivering-orders-list'),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+        itemCount: orders.length,
+        itemBuilder: (context, index) {
+          final order = orders[index];
+          return DeliveringOrderCard(
+            key: ValueKey(order.id),
+            order: order,
+            onDetailsTap: () => _openDetails(order),
+            onContactTap: () => _contactShipper(order),
+            onTrackTap: () => _track(order),
+            onReviewTap: () => _openReview(order),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({
+    required this.onBackTap,
+    required this.onSearchTap,
+    required this.onFilterTap,
+  });
+
+  final VoidCallback onBackTap;
+  final VoidCallback onSearchTap;
+  final VoidCallback onFilterTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 62,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              tooltip: 'Quay lại',
+              onPressed: onBackTap,
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 21),
+            ),
+          ),
+          const Text(
+            'Đang giao',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: const ValueKey('focus-delivery-search'),
+                  tooltip: 'Tìm kiếm',
+                  onPressed: onSearchTap,
+                  icon: const Icon(Icons.search_rounded),
+                ),
+                IconButton(
+                  key: const ValueKey('open-delivery-filter'),
+                  tooltip: 'Bộ lọc',
+                  onPressed: onFilterTap,
+                  icon: const Icon(Icons.tune_rounded),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchBar extends StatefulWidget {
+  const _SearchBar({
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  State<_SearchBar> createState() => _SearchBarState();
+}
+
+class _SearchBarState extends State<_SearchBar> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_changed);
+    widget.focusNode.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_changed);
+    widget.focusNode.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      margin: const EdgeInsets.symmetric(horizontal: 18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: widget.focusNode.hasFocus
+              ? AppColors.primary
+              : AppColors.divider,
+          width: widget.focusNode.hasFocus ? 1.4 : 1,
+        ),
+        boxShadow: widget.focusNode.hasFocus ? AppColors.cardShadow : null,
+      ),
+      child: TextField(
+        key: const ValueKey('delivery-search-field'),
+        controller: widget.controller,
+        focusNode: widget.focusNode,
+        onChanged: widget.onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Mã đơn, món ăn hoặc tên shipper',
+          hintStyle: const TextStyle(
+            color: AppColors.textTertiary,
+            fontSize: 13,
+          ),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            color: AppColors.textSecondary,
+          ),
+          suffixIcon: widget.controller.text.isEmpty
+              ? null
+              : IconButton(
+                  key: const ValueKey('clear-delivery-search'),
+                  onPressed: widget.onClear,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 15),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeliveryLoading extends StatelessWidget {
+  const _DeliveryLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+      itemCount: 2,
+      separatorBuilder: (_, _) => const SizedBox(height: 14),
+      itemBuilder: (_, _) => Container(
+        height: 465,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.divider),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeliveryError extends StatelessWidget {
+  const _DeliveryError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.cloud_off_outlined,
+            size: 48,
+            color: AppColors.textTertiary,
+          ),
+          const SizedBox(height: 13),
+          const Text('Không thể tải đơn hàng.'),
+          const SizedBox(height: 13),
+          FilledButton(onPressed: onRetry, child: const Text('Thử lại')),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeliveryFilterSheet extends StatelessWidget {
+  const _DeliveryFilterSheet({
+    required this.selected,
+    required this.countFor,
+    required this.onSelected,
+  });
+
+  final DeliveryFilter selected;
+  final int Function(DeliveryFilter) countFor;
+  final ValueChanged<DeliveryFilter> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 4,
+              width: 42,
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Lọc giao hàng',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (final filter in DeliveryFilter.values)
+              ListTile(
+                key: ValueKey('delivery-filter-${filter.name}'),
+                onTap: () => onSelected(filter),
+                title: Text(_label(filter)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${countFor(filter)}',
+                      style: const TextStyle(color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(width: 14),
+                    Icon(
+                      selected == filter
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.radio_button_off_rounded,
+                      color: selected == filter
+                          ? deliveryGreen
+                          : AppColors.textTertiary,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _label(DeliveryFilter filter) {
+    return switch (filter) {
+      DeliveryFilter.all => 'Tất cả',
+      DeliveryFilter.nearby => 'Sắp đến nơi',
+      DeliveryFilter.completed => 'Đã giao',
+    };
+  }
+}
+
+class _DeliveryTrackingSheet extends StatelessWidget {
+  const _DeliveryTrackingSheet({required this.order});
+
+  final OrderModel order;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 22),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Align(
+              child: Container(
+                height: 4,
+                width: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 17),
+            const Text(
+              'Theo dõi giao hàng',
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              order.delivery.destination,
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 18),
+            DeliveryProgressTimeline(order: order),
+            const SizedBox(height: 18),
+            MapPreviewCard(order: order, onMapTap: () {}),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start OTP Flask API",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "-u",
+        "-c",
+        "from apiotp import app; app.run(host='0.0.0.0', port=3000, debug=True, use_reloader=False)"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/../api"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": {
+        "owner": "otp-api",
+        "pattern": {
+          "regexp": "^.*$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^.*Serving Flask app.*$",
+          "endsPattern": "^.*Running on http://127\\.0\\.0\\.1:3000.*$"
+        }
+      }
+    }
+  ]
+}

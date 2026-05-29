@@ -1,0 +1,24 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validImageUpload() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    match /users/{userId}/avatars/{fileName} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && validImageUpload();
+      allow delete: if isOwner(userId);
+    }
+
+    match /{file=**} {
+      allow read, write: if false;
+    }
+  }
+}

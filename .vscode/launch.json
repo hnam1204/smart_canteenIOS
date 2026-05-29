@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Smart Canteen - Chrome Debug",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "deviceId": "chrome",
+      "preLaunchTask": "Start OTP Flask API",
+      "toolArgs": [
+        "--dart-define=APP_ENV=development",
+        "--dart-define=API_BASE_URL=http://127.0.0.1:3000"
+      ]
+    },
+    {
+      "name": "Smart Canteen - Chrome Profile",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "profile",
+      "deviceId": "chrome",
+      "preLaunchTask": "Start OTP Flask API",
+      "toolArgs": [
+        "--dart-define=APP_ENV=development",
+        "--dart-define=API_BASE_URL=http://127.0.0.1:3000"
+      ]
+    }
+  ]
+}
