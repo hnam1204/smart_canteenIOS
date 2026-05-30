@@ -4,8 +4,6 @@ enum Gender { male, female, other }
 
 enum SecurityAction {
   changePassword,
-  emailVerification,
-  phoneVerification,
   loginActivity,
 }
 
@@ -156,20 +154,6 @@ final demoPersonalProfile = UserProfileModel(
       title: 'Đổi mật khẩu',
       subtitle: 'Cập nhật lần cuối 21/05/2026',
       icon: Icons.lock_outline_rounded,
-    ),
-    AccountSecurityModel(
-      action: SecurityAction.emailVerification,
-      title: 'Xác thực email',
-      subtitle: 'Email của bạn đã được bảo vệ',
-      icon: Icons.mark_email_read_outlined,
-      verified: true,
-    ),
-    AccountSecurityModel(
-      action: SecurityAction.phoneVerification,
-      title: 'Xác thực số điện thoại',
-      subtitle: 'Hoàn tất để bảo mật tài khoản',
-      icon: Icons.phone_android_outlined,
-      verified: false,
     ),
     AccountSecurityModel(
       action: SecurityAction.loginActivity,

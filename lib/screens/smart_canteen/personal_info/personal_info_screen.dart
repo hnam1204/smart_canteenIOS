@@ -13,6 +13,8 @@ import 'widgets/gender_picker_sheet.dart';
 import 'widgets/personal_info_form.dart';
 import 'widgets/profile_stats_card.dart';
 import 'widgets/unsaved_changes_dialog.dart';
+import 'widgets/change_password_sheet.dart';
+import 'recent_login_screen.dart';
 
 class PersonalInfoScreen extends StatefulWidget {
   const PersonalInfoScreen({
@@ -211,10 +213,24 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   }
 
   void _openSecurity(AccountSecurityModel item) {
-    AppNavigator.push<void>(
-      context,
-      builder: (_) => _SecurityDestinationScreen(item: item),
-    );
+    if (item.action == SecurityAction.changePassword) {
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => const ChangePasswordBottomSheet(),
+      );
+    } else if (item.action == SecurityAction.loginActivity) {
+      AppNavigator.push<void>(
+        context,
+        builder: (_) => const RecentLoginScreen(),
+      );
+    } else {
+      AppNavigator.push<void>(
+        context,
+        builder: (_) => _SecurityDestinationScreen(item: item),
+      );
+    }
   }
 
   Future<void> _logout() async {

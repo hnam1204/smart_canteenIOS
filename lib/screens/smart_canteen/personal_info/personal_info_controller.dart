@@ -185,20 +185,6 @@ class PersonalInfoController extends ChangeNotifier {
           icon: Icons.lock_outline_rounded,
         ),
         AccountSecurityModel(
-          action: SecurityAction.emailVerification,
-          title: 'Xác thực email',
-          subtitle: 'Kiểm tra trạng thái bảo mật email',
-          icon: Icons.mark_email_read_outlined,
-          verified: true,
-        ),
-        AccountSecurityModel(
-          action: SecurityAction.phoneVerification,
-          title: 'Xác thực số điện thoại',
-          subtitle: 'Hoàn tất để bảo mật tài khoản',
-          icon: Icons.phone_android_outlined,
-          verified: false,
-        ),
-        AccountSecurityModel(
           action: SecurityAction.loginActivity,
           title: 'Đăng nhập gần đây',
           subtitle: 'Xem thiết bị đã đăng nhập',
