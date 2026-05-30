@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
 import '../repositories/notification_repository.dart';
+import '../services/notification_service.dart' as push;
 
 class NotificationProvider extends ChangeNotifier {
   NotificationProvider({NotificationRepository? repository})
@@ -33,6 +34,7 @@ class NotificationProvider extends ChangeNotifier {
             _unreadCount = count;
             _error = null;
             notifyListeners();
+            push.NotificationService.instance.setBadge(count);
           },
           onError: (Object error) {
             _error = error.toString();

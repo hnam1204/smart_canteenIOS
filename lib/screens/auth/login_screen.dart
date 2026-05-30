@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/navigation/app_navigator.dart';
-import '../../firebase/notification_service.dart';
+import '../../services/notification_service.dart' as push;
 import '../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -45,7 +45,7 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       );
       try {
-        await NotificationService.instance.syncTokenForCurrentUser();
+        await push.NotificationService.instance.getFCMToken();
       } on Object {
         // Token registration must never block a successful authentication.
       }

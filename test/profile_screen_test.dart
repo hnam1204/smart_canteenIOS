@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:smart_canteen/core/theme/theme_provider.dart';
 import 'package:smart_canteen/screens/smart_canteen/activity_history/activity_history_screen.dart';
 import 'package:smart_canteen/screens/smart_canteen/all_orders/all_orders_screen.dart';
 import 'package:smart_canteen/screens/smart_canteen/delivered_orders/delivered_orders_screen.dart';
@@ -14,11 +17,25 @@ import 'package:smart_canteen/screens/smart_canteen/reward_points/reward_points_
 import 'package:smart_canteen/screens/smart_canteen/vouchers/my_vouchers_screen.dart';
 
 void main() {
+  late SharedPreferences prefs;
+
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    prefs = await SharedPreferences.getInstance();
+  });
+
+  Widget buildTestWidget(Widget home) {
+    return ChangeNotifierProvider(
+      create: (_) => ThemeProvider(prefs),
+      child: MaterialApp(home: home),
+    );
+  }
+
   testWidgets('profile loads user data and updates avatar', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Tài khoản'), findsWidgets);
@@ -38,7 +55,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(320, 700));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+      await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
       await tester.pump(const Duration(milliseconds: 500));
 
       expect(find.text('Nguyễn Thảo Vy'), findsOneWidget);
@@ -50,7 +67,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Giới thiệu ngay'), findsOneWidget);
+      expect(find.text('Giới thiệu ngay'), findsNothing);
       expect(tester.takeException(), isNull);
 
       await tester.tap(find.byTooltip('Thông báo'));
@@ -67,7 +84,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
 
     await tester.tap(find.byKey(const ValueKey('view-all-orders')));
@@ -83,7 +100,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
 
     await tester.tap(find.text('Nguyễn Thảo Vy'));
@@ -99,7 +116,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
 
     await tester.tap(find.text('1.250 điểm'));
@@ -118,7 +135,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.ensureVisible(find.text('Ưu đãi của tôi'));
     await tester.tap(find.text('Ưu đãi của tôi'));
@@ -136,7 +153,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.drag(
       find.byKey(const ValueKey('profile-content-list')),
@@ -159,7 +176,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.drag(
       find.byKey(const ValueKey('profile-content-list')),
@@ -184,7 +201,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
 
     await tester.tap(
@@ -206,7 +223,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
 
     await tester.tap(
@@ -228,7 +245,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
 
     await tester.tap(
@@ -250,7 +267,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+    await tester.pumpWidget(buildTestWidget(const ProfileScreen()));
     await tester.pump(const Duration(milliseconds: 500));
 
     await tester.drag(

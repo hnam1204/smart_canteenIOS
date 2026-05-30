@@ -227,20 +227,22 @@ class _NewBadge extends StatelessWidget {
 extension on NotificationType {
   IconData get icon {
     switch (this) {
-      case NotificationType.promotion:
+      case NotificationType.order:
+        return Icons.receipt_long_outlined;
+      case NotificationType.payment:
+        return Icons.payment_rounded;
+      case NotificationType.support:
+        return Icons.support_agent_rounded;
+      case NotificationType.voucher:
         return Icons.card_giftcard_rounded;
-      case NotificationType.discount:
-        return Icons.local_offer_rounded;
-      case NotificationType.points:
+      case NotificationType.reward:
         return Icons.celebration_rounded;
-      case NotificationType.orderCompleted:
-        return Icons.notifications_active_rounded;
-      case NotificationType.orderPreparing:
-        return Icons.delivery_dining_rounded;
-      case NotificationType.system:
-        return Icons.campaign_rounded;
       case NotificationType.review:
         return Icons.rate_review_rounded;
+      case NotificationType.system:
+        return Icons.campaign_rounded;
+      case NotificationType.promotion:
+        return Icons.local_offer_rounded;
     }
   }
 }
@@ -264,29 +266,29 @@ class _NotificationPalette {
           iconBackground: Color(0xFFFFEBCF),
           surface: Color(0xFFFFFAF6),
         );
-      case NotificationType.discount:
+      case NotificationType.voucher:
         return const _NotificationPalette(
           accent: Color(0xFF13A457),
           iconBackground: Color(0xFFE7F7EE),
           surface: Color(0xFFF7FCF9),
         );
-      case NotificationType.points:
+      case NotificationType.reward:
         return const _NotificationPalette(
           accent: Color(0xFF7C4DCC),
           iconBackground: Color(0xFFF0EAFB),
           surface: Color(0xFFFBF9FE),
         );
-      case NotificationType.orderCompleted:
+      case NotificationType.order:
         return const _NotificationPalette(
           accent: Color(0xFF2176E8),
           iconBackground: Color(0xFFE7F0FF),
           surface: Color(0xFFF7FAFF),
         );
-      case NotificationType.orderPreparing:
+      case NotificationType.payment:
         return const _NotificationPalette(
-          accent: AppColors.primary,
-          iconBackground: AppColors.primarySoft,
-          surface: Color(0xFFFFFAF7),
+          accent: Color(0xFF13A457),
+          iconBackground: Color(0xFFE7F7EE),
+          surface: Color(0xFFF7FCF9),
         );
       case NotificationType.system:
         return const _NotificationPalette(
@@ -299,6 +301,12 @@ class _NotificationPalette {
           accent: Color(0xFFE28743),
           iconBackground: Color(0xFFFBEEDD),
           surface: Color(0xFFFEF9F5),
+        );
+      case NotificationType.support:
+        return const _NotificationPalette(
+          accent: AppColors.primary,
+          iconBackground: AppColors.primarySoft,
+          surface: Color(0xFFFFFAF7),
         );
     }
   }

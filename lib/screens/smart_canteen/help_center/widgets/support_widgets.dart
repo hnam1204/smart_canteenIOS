@@ -1,184 +1,9 @@
 import 'package:flutter/material.dart';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../../../../core/constants/colors.dart';
-import '../help_center_model.dart';
-
-class ContactSupportCard extends StatelessWidget {
-  const ContactSupportCard({
-    super.key,
-    required this.onChatTap,
-    required this.onCallTap,
-    required this.onEmailTap,
-  });
-
-  final VoidCallback onChatTap;
-  final VoidCallback onCallTap;
-  final VoidCallback onEmailTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(21),
-        border: Border.all(color: AppColors.divider),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Stack(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primarySoft,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.support_agent_rounded,
-                      color: AppColors.primary,
-                      size: 29,
-                    ),
-                  ),
-                  Positioned(
-                    right: 2,
-                    bottom: 2,
-                    child: Container(
-                      width: 13,
-                      height: 13,
-                      decoration: BoxDecoration(
-                        color: AppColors.success,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Hỗ trợ Smart Canteen',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Đang trực tuyến  •  07:00 - 21:30',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: AppColors.success,
-                      ),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      '1900 123 456  •  support@smartcanteen.vn',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Row(
-            children: [
-              _SupportButton(
-                key: const ValueKey('contact-chat'),
-                icon: Icons.chat_bubble_outline_rounded,
-                label: 'Chat ngay',
-                filled: true,
-                onPressed: onChatTap,
-              ),
-              const SizedBox(width: 8),
-              _SupportButton(
-                icon: Icons.call_outlined,
-                label: 'Gọi hỗ trợ',
-                onPressed: onCallTap,
-              ),
-              const SizedBox(width: 8),
-              _SupportButton(
-                icon: Icons.mail_outline_rounded,
-                label: 'Email',
-                onPressed: onEmailTap,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SupportButton extends StatelessWidget {
-  const _SupportButton({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-    this.filled = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-  final bool filled;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: filled
-          ? FilledButton.icon(
-              onPressed: onPressed,
-              icon: Icon(icon, size: 15),
-              label: Text(label),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(0, 42),
-                textStyle: const TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            )
-          : OutlinedButton.icon(
-              onPressed: onPressed,
-              icon: Icon(icon, size: 15),
-              label: Text(label),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textSecondary,
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(0, 42),
-                textStyle: const TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                ),
-                side: const BorderSide(color: AppColors.divider),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-    );
-  }
-}
+import '../../../../models/support_ticket_model.dart';
+import '../help_center_model.dart' hide SupportTicketModel;
 
 class ReportProblemForm extends StatefulWidget {
   const ReportProblemForm({
@@ -198,7 +23,6 @@ class _ReportProblemFormState extends State<ReportProblemForm> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _descriptionController = TextEditingController();
   ProblemType _type = ProblemType.order;
-  bool _attached = false;
 
   @override
   void dispose() {
@@ -214,17 +38,17 @@ class _ReportProblemFormState extends State<ReportProblemForm> {
     );
     if (!mounted || !result) return;
     _descriptionController.clear();
-    setState(() => _attached = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(21),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: AppColors.divider),
+        boxShadow: AppColors.cardShadow,
       ),
       child: Form(
         key: _formKey,
@@ -232,14 +56,14 @@ class _ReportProblemFormState extends State<ReportProblemForm> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Báo lỗi nhanh',
+              'Tạo yêu cầu hỗ trợ',
               style: TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 13),
+            const SizedBox(height: 12),
             DropdownButtonFormField<ProblemType>(
               key: const ValueKey('problem-type-field'),
               initialValue: _type,
@@ -260,7 +84,7 @@ class _ReportProblemFormState extends State<ReportProblemForm> {
                 if (value != null) setState(() => _type = value);
               },
             ),
-            const SizedBox(height: 11),
+            const SizedBox(height: 12),
             TextFormField(
               key: const ValueKey('problem-description-field'),
               controller: _descriptionController,
@@ -279,54 +103,10 @@ class _ReportProblemFormState extends State<ReportProblemForm> {
                 return null;
               },
             ),
-            const SizedBox(height: 2),
-            Material(
-              color: _attached ? AppColors.primarySoft : AppColors.field,
-              borderRadius: BorderRadius.circular(13),
-              child: InkWell(
-                key: const ValueKey('attach-problem-image'),
-                borderRadius: BorderRadius.circular(13),
-                onTap: () => setState(() => _attached = !_attached),
-                child: SizedBox(
-                  height: 48,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _attached
-                            ? Icons.check_circle_outline_rounded
-                            : Icons.add_photo_alternate_outlined,
-                        color: _attached
-                            ? AppColors.primary
-                            : AppColors.textSecondary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          _attached
-                              ? 'Đã thêm ảnh minh họa'
-                              : 'Thêm ảnh minh họa',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: _attached
-                                ? AppColors.primary
-                                : AppColors.textSecondary,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 13),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              height: 49,
+              height: 48,
               child: FilledButton(
                 key: const ValueKey('submit-support-ticket'),
                 onPressed: widget.submitting ? null : _submit,
@@ -346,7 +126,7 @@ class _ReportProblemFormState extends State<ReportProblemForm> {
                       )
                     : const Text(
                         'Gửi hỗ trợ',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+                        style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white),
                       ),
               ),
             ),
@@ -385,214 +165,241 @@ class SupportTicketCard extends StatelessWidget {
   const SupportTicketCard({
     super.key,
     required this.ticket,
-    required this.onDetailsTap,
+    required this.onChatTap,
   });
 
   final SupportTicketModel ticket;
-  final VoidCallback onDetailsTap;
+  final VoidCallback onChatTap;
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Row(
-        children: [
-          Container(
-            height: 43,
-            width: 43,
-            decoration: BoxDecoration(
-              color: _statusColor(ticket.status).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(
-              Icons.confirmation_number_outlined,
-              color: _statusColor(ticket.status),
-            ),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  ticket.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${ticket.id}  •  ${ticket.submittedAt}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 10.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                supportStatusLabel(ticket.status),
-                style: TextStyle(
-                  color: _statusColor(ticket.status),
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              TextButton(
-                key: ValueKey('support-ticket-${ticket.id}'),
-                onPressed: onDetailsTap,
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 25),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text(
-                  'Xem chi tiết',
-                  style: TextStyle(fontSize: 11),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+  IconData _getCategoryIcon(String category) {
+    switch (category) {
+      case 'Đơn hàng':
+      case 'order':
+        return Icons.receipt_long_outlined;
+      case 'Thanh toán':
+      case 'payment':
+        return Icons.payment_outlined;
+      case 'App lỗi':
+      case 'application':
+        return Icons.bug_report_outlined;
+      case 'Tài khoản':
+      case 'account':
+        return Icons.account_circle_outlined;
+      default:
+        return Icons.support_agent_rounded;
+    }
   }
 
-  Color _statusColor(SupportStatus status) => switch (status) {
-    SupportStatus.processing => const Color(0xFF2563EB),
-    SupportStatus.replied => AppColors.success,
-    SupportStatus.closed => AppColors.textSecondary,
-  };
-}
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return const Color(0xFF2563EB);
+      case 'replied':
+        return const Color(0xFF16A34A);
+      case 'closed':
+        return const Color(0xFF6B7280);
+      default:
+        return AppColors.textSecondary;
+    }
+  }
 
-class SupportTicketDetailSheet extends StatelessWidget {
-  const SupportTicketDetailSheet({
-    super.key,
-    required this.ticket,
-    required this.onCloseTicket,
-  });
+  String _getStatusLabel(String status) {
+    switch (status) {
+      case 'pending':
+        return 'Đang xử lý';
+      case 'replied':
+        return 'Đã phản hồi';
+      case 'closed':
+        return 'Đã đóng';
+      default:
+        return status;
+    }
+  }
 
-  final SupportTicketModel ticket;
-  final VoidCallback onCloseTicket;
+  String _formatTime(DateTime time) {
+    final difference = DateTime.now().difference(time);
+    if (difference.inMinutes < 1) return 'Vừa xong';
+    if (difference.inMinutes < 60) return '${difference.inMinutes} phút trước';
+    if (difference.inHours < 24) return '${difference.inHours} giờ trước';
+    return '${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}/${time.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.78,
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        11,
-        20,
-        MediaQuery.viewPaddingOf(context).bottom + 18,
-      ),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 42,
-              height: 4,
+    final statusColor = _getStatusColor(ticket.status);
+    final isFirebaseInitialized = Firebase.apps.isNotEmpty;
+
+    return GestureDetector(
+      onTap: onChatTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.divider),
+          boxShadow: AppColors.cardShadow,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 40,
+              width: 40,
               decoration: BoxDecoration(
-                color: AppColors.divider,
-                borderRadius: BorderRadius.circular(4),
+                color: statusColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                _getCategoryIcon(ticket.category),
+                color: statusColor,
+                size: 20,
               ),
             ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            ticket.title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${ticket.id}  •  ${supportStatusLabel(ticket.status)}',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 17),
-          Flexible(
-            child: SingleChildScrollView(
+            const SizedBox(width: 10),
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _TicketSection(
-                    title: 'Thời gian gửi',
-                    content: ticket.submittedAt,
-                  ),
-                  _TicketSection(
-                    title: 'Nội dung',
-                    content: ticket.description,
-                  ),
-                  if (ticket.hasAttachment)
-                    Container(
-                      height: 55,
-                      margin: const EdgeInsets.only(bottom: 15),
-                      decoration: BoxDecoration(
-                        color: AppColors.field,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Center(
+                  Row(
+                    children: [
+                      Expanded(
                         child: Text(
-                          'Ảnh đính kèm',
-                          style: TextStyle(color: AppColors.textSecondary),
+                          ticket.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _formatTime(ticket.updatedAt),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    ticket.lastMessage,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      height: 1.35,
                     ),
-                  _TicketSection(
-                    title: 'Phản hồi từ hỗ trợ',
-                    content:
-                        ticket.reply ??
-                        'Chúng tôi đang kiểm tra yêu cầu của bạn.',
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          _getStatusLabel(ticket.status),
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          if (ticket.unreadByUser) ...[
+                            if (isFirebaseInitialized)
+                              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                                stream: FirebaseFirestore.instance
+                                    .collection('support_tickets')
+                                    .doc(ticket.id)
+                                    .collection('messages')
+                                    .where('senderRole', isEqualTo: 'admin')
+                                    .where('isRead', isEqualTo: false)
+                                    .snapshots(),
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    width: 16,
+                                    height: 16,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.error,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '${snapshot.data!.docs.length}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              )
+                            else
+                              Container(
+                                margin: const EdgeInsets.only(right: 6),
+                                width: 16,
+                                height: 16,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.error,
+                                  shape: BoxShape.circle,
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  '1',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                          ],
+                          TextButton(
+                            onPressed: onChatTap,
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              backgroundColor: AppColors.primarySoft,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: Text(
+                              ticket.status == 'closed' ? 'Xem chi tiết' : 'Chat ngay',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ),
-          if (ticket.status != SupportStatus.closed) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 49,
-              child: OutlinedButton(
-                key: const ValueKey('close-support-ticket'),
-                onPressed: onCloseTicket,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.error,
-                  side: const BorderSide(color: Color(0xFFFECACA)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: const Text('Đóng ticket'),
-              ),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -604,58 +411,41 @@ class EmptySupportState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.divider),
       ),
       child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.support_agent_rounded, size: 46, color: AppColors.primary),
-          SizedBox(height: 10),
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: AppColors.primarySoft,
+            child: Icon(
+              Icons.support_agent_rounded,
+              size: 32,
+              color: AppColors.primary,
+            ),
+          ),
+          SizedBox(height: 14),
           Text(
             'Chưa có yêu cầu hỗ trợ',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
           ),
           SizedBox(height: 6),
           Text(
-            'Nếu cần trợ giúp hãy liên hệ với chúng tôi',
+            'Gửi yêu cầu hỗ trợ khi gặp sự cố, chúng tôi sẽ phản hồi sớm nhất.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TicketSection extends StatelessWidget {
-  const _TicketSection({required this.title, required this.content});
-  final String title;
-  final String content;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            content,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              height: 1.45,
               fontSize: 13,
+              height: 1.45,
             ),
           ),
         ],

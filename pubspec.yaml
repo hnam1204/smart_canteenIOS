@@ -46,6 +46,8 @@ dependencies:
   flutter_dotenv: ^6.0.1
   firebase_app_check: ^0.4.4+1
   cached_network_image: ^3.4.1
+  shared_preferences: ^2.5.5
+  flutter_local_notifications: ^21.0.0
 
 dev_dependencies:
   flutter_test:

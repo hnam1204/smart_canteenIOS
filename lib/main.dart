@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/config/app_config.dart';
 import 'firebase_options.dart';
 import 'firebase/app_check_service.dart';
 import 'firebase/firebase_messaging_handler.dart';
-import 'firebase/notification_service.dart';
+import 'services/notification_service.dart' as push;
 import 'core/navigation/app_page_transition.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
@@ -31,17 +34,20 @@ void main() async {
     firebaseAvailable = true;
     await AppCheckService.activateForRelease();
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    await NotificationService.instance.initialize(
-      onNotificationTap: (_) {
-        appNavigatorKey.currentState?.pushNamed('/home');
-      },
-    );
+    await push.NotificationService.instance.initialize();
+    await push.NotificationService.instance.requestPermission();
   } on Object catch (error) {
     firebaseAvailable = false;
     debugPrint('Firebase unavailable: $error');
   }
 
-  runApp(const SmartCanteenApp());
+  final prefs = await SharedPreferences.getInstance();
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(prefs),
+      child: const SmartCanteenApp(),
+    ),
+  );
 }
 
 class SmartCanteenApp extends StatelessWidget {
@@ -51,12 +57,15 @@ class SmartCanteenApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider?>(context);
+    final isDark = themeProvider?.isDarkMode ?? false;
     return MaterialApp(
       title: 'Smart Canteen',
       navigatorKey: appNavigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      themeMode: ThemeMode.light,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       home: !firebaseAvailable && authStateChanges == null
           ? const _FirebaseUnavailableScreen()
           : StreamBuilder<User?>(

@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../firebase/firebase_service.dart';
+import 'notification_service.dart' as push;
 import 'session_manager.dart';
 
 class AuthService {
@@ -35,6 +36,11 @@ class AuthService {
       _sessions.validAccessToken(refresh: refresh);
 
   Future<void> signOut() async {
+    try {
+      await push.NotificationService.instance.removeTokenFromFirestore();
+    } catch (_) {
+      // Token cleanup must never block sign-out.
+    }
     await Future.wait([_sessions.clear(), _firebase.signOut()]);
   }
 }

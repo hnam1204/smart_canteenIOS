@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/colors.dart';
@@ -17,12 +19,13 @@ import '../preparing_orders/preparing_orders_screen.dart';
 import '../reward_points/reward_points_screen.dart';
 import '../vouchers/my_vouchers_screen.dart';
 import '../widgets/canteen_bottom_nav_bar.dart';
+import 'package:provider/provider.dart';
+import '../../../core/theme/theme_provider.dart';
 import 'profile_controller.dart';
 import 'user_model.dart';
 import 'widgets/order_status_widget.dart';
 import 'widgets/profile_header.dart';
 import 'widgets/profile_menu_item.dart';
-import 'widgets/referral_banner.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -324,13 +327,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             onMenuTap: (option) =>
                                 _openMenuAction(option, profile),
-                            onReferralTap: () => _openMenuAction(
-                              const ProfileMenuOption(
-                                action: ProfileMenuAction.referral,
-                                title: 'Giới thiệu bạn bè',
-                              ),
-                              profile,
-                            ),
                             onLogoutTap: _confirmLogout,
                           ),
                   ),
@@ -365,8 +361,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Icons.history_rounded;
       case ProfileMenuAction.support:
         return Icons.help_outline_rounded;
-      case ProfileMenuAction.referral:
-        return Icons.card_giftcard_rounded;
     }
   }
 
@@ -384,8 +378,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return 'Theo dõi hoạt động nhận điểm, đánh giá và ưu đãi đã dùng.';
       case ProfileMenuAction.support:
         return 'Liên hệ hỗ trợ và xem câu hỏi thường gặp về đơn hàng.';
-      case ProfileMenuAction.referral:
-        return 'Mời bạn bè tham gia Smart Canteen để cả hai cùng nhận ưu đãi.';
     }
   }
 }
@@ -402,7 +394,6 @@ class _ProfileContent extends StatelessWidget {
     required this.onStatusTap,
     required this.onViewOrdersTap,
     required this.onMenuTap,
-    required this.onReferralTap,
     required this.onLogoutTap,
   });
 
@@ -415,7 +406,6 @@ class _ProfileContent extends StatelessWidget {
   final ValueChanged<OrderStatusSummary> onStatusTap;
   final VoidCallback onViewOrdersTap;
   final ValueChanged<ProfileMenuOption> onMenuTap;
-  final VoidCallback onReferralTap;
   final VoidCallback onLogoutTap;
 
   @override
@@ -471,8 +461,6 @@ class _ProfileContent extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 18),
-              ReferralBanner(onTap: onReferralTap),
-              const SizedBox(height: 18),
               _LogoutButton(onPressed: onLogoutTap),
             ],
           ),
@@ -495,8 +483,6 @@ class _ProfileContent extends StatelessWidget {
         return Icons.history_rounded;
       case ProfileMenuAction.support:
         return Icons.help_outline_rounded;
-      case ProfileMenuAction.referral:
-        return Icons.card_giftcard_rounded;
     }
   }
 }
@@ -944,10 +930,68 @@ class _ProfileSettingsSheet extends StatefulWidget {
 
 class _ProfileSettingsSheetState extends State<_ProfileSettingsSheet> {
   bool _biometrics = true;
-  bool _darkMode = false;
+  bool _notifyOrder = true;
+  bool _notifyPromotion = true;
+  bool _notifySupport = true;
+  bool _notifySystem = true;
+  bool _loadingPrefs = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationPrefs();
+  }
+
+  Future<void> _loadNotificationPrefs() async {
+    final uid = _currentUid;
+    if (uid == null) {
+      setState(() => _loadingPrefs = false);
+      return;
+    }
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final data = doc.data() ?? {};
+      final settings = data['notificationSettings'] as Map<String, dynamic>? ?? {};
+      setState(() {
+        _notifyOrder = settings['order'] as bool? ?? data['notifyOrder'] as bool? ?? true;
+        _notifyPromotion = settings['promotion'] as bool? ?? data['notifyPromotion'] as bool? ?? true;
+        _notifySupport = settings['support'] as bool? ?? data['notifySupport'] as bool? ?? true;
+        _notifySystem = settings['system'] as bool? ?? data['notifySystem'] as bool? ?? true;
+        _loadingPrefs = false;
+      });
+    } catch (_) {
+      setState(() => _loadingPrefs = false);
+    }
+  }
+
+  String? get _currentUid {
+    try {
+      return FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _updatePref(String key, bool value) async {
+    final uid = _currentUid;
+    if (uid == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'notificationSettings': {
+          key: value,
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      // Silently ignore preference sync errors
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final darkMode = themeProvider.isDarkMode;
+
     return Container(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -955,9 +999,9 @@ class _ProfileSettingsSheetState extends State<_ProfileSettingsSheet> {
         20,
         MediaQuery.paddingOf(context).bottom + 18,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -971,7 +1015,7 @@ class _ProfileSettingsSheetState extends State<_ProfileSettingsSheet> {
             ),
           ),
           const SizedBox(height: 18),
-          const Text(
+          Text(
             'Cài đặt tài khoản',
             style: TextStyle(
               color: AppColors.textPrimary,
@@ -989,13 +1033,83 @@ class _ProfileSettingsSheetState extends State<_ProfileSettingsSheet> {
             onChanged: (value) => setState(() => _biometrics = value),
           ),
           SwitchListTile.adaptive(
-            value: _darkMode,
+            value: darkMode,
             activeThumbColor: AppColors.primary,
             activeTrackColor: AppColors.primarySoft,
             title: const Text('Chế độ tối'),
             subtitle: const Text('Tự động theo thiết bị khi khả dụng'),
-            onChanged: (value) => setState(() => _darkMode = value),
+            onChanged: (value) => themeProvider.toggleTheme(value),
           ),
+          const Divider(height: 24),
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Cài đặt thông báo',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+          if (_loadingPrefs)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+              ),
+            )
+          else ...[
+            SwitchListTile.adaptive(
+              value: _notifyOrder,
+              activeThumbColor: AppColors.primary,
+              activeTrackColor: AppColors.primarySoft,
+              title: const Text('Đơn hàng'),
+              subtitle: const Text('Cập nhật trạng thái đơn hàng'),
+              onChanged: (value) {
+                setState(() => _notifyOrder = value);
+                _updatePref('order', value);
+              },
+            ),
+            SwitchListTile.adaptive(
+              value: _notifyPromotion,
+              activeThumbColor: AppColors.primary,
+              activeTrackColor: AppColors.primarySoft,
+              title: const Text('Khuyến mãi'),
+              subtitle: const Text('Ưu đãi và chương trình khuyến mãi'),
+              onChanged: (value) {
+                setState(() => _notifyPromotion = value);
+                _updatePref('promotion', value);
+              },
+            ),
+            SwitchListTile.adaptive(
+              value: _notifySupport,
+              activeThumbColor: AppColors.primary,
+              activeTrackColor: AppColors.primarySoft,
+              title: const Text('Hỗ trợ'),
+              subtitle: const Text('Phản hồi từ nhân viên hỗ trợ'),
+              onChanged: (value) {
+                setState(() => _notifySupport = value);
+                _updatePref('support', value);
+              },
+            ),
+            SwitchListTile.adaptive(
+              value: _notifySystem,
+              activeThumbColor: AppColors.primary,
+              activeTrackColor: AppColors.primarySoft,
+              title: const Text('Hệ thống'),
+              subtitle: const Text('Thông báo cập nhật từ hệ thống'),
+              onChanged: (value) {
+                setState(() => _notifySystem = value);
+                _updatePref('system', value);
+              },
+            ),
+          ],
         ],
       ),
     );

@@ -138,12 +138,13 @@ class NotificationController extends ChangeNotifier {
 
   AppNotification _fromFirestore(firestore.NotificationModel item) {
     final type = switch (item.type) {
-      'promotion' => NotificationType.promotion,
-      'discount' => NotificationType.discount,
-      'points' => NotificationType.points,
-      'orderPreparing' => NotificationType.orderPreparing,
-      'orderCompleted' => NotificationType.orderCompleted,
+      'order' || 'orderCompleted' || 'orderPreparing' => NotificationType.order,
+      'payment' => NotificationType.payment,
+      'support' => NotificationType.support,
+      'voucher' || 'discount' => NotificationType.voucher,
+      'reward' || 'points' => NotificationType.reward,
       'review' => NotificationType.review,
+      'promotion' => NotificationType.promotion,
       _ => NotificationType.system,
     };
     final difference = DateTime.now().difference(item.createdAt);

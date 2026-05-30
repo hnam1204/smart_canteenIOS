@@ -1,13 +1,14 @@
 enum NotificationFilter { all, offers, activity }
 
 enum NotificationType {
-  promotion,
-  discount,
-  points,
-  orderCompleted,
-  orderPreparing,
-  system,
+  order,
+  payment,
+  support,
+  voucher,
+  reward,
   review,
+  system,
+  promotion,
 }
 
 class AppNotification {
@@ -36,13 +37,14 @@ class AppNotification {
   NotificationFilter get filter {
     switch (type) {
       case NotificationType.promotion:
-      case NotificationType.discount:
+      case NotificationType.voucher:
         return NotificationFilter.offers;
-      case NotificationType.points:
-      case NotificationType.orderCompleted:
-      case NotificationType.orderPreparing:
-      case NotificationType.system:
+      case NotificationType.order:
+      case NotificationType.payment:
+      case NotificationType.support:
+      case NotificationType.reward:
       case NotificationType.review:
+      case NotificationType.system:
         return NotificationFilter.activity;
     }
   }
@@ -75,7 +77,7 @@ const demoNotifications = <AppNotification>[
   ),
   AppNotification(
     id: 'offer_lunch',
-    type: NotificationType.discount,
+    type: NotificationType.voucher,
     title: 'Giảm 15% món ăn yêu thích',
     message: 'Giảm 15% khi đặt món trong khung giờ 10:00 - 14:00',
     detail: 'Áp dụng đến 30/05/2026',
@@ -84,21 +86,21 @@ const demoNotifications = <AppNotification>[
   ),
   AppNotification(
     id: 'points_added',
-    type: NotificationType.points,
+    type: NotificationType.reward,
     title: 'Chương trình tích điểm',
     message: 'Bạn vừa được cộng 56 điểm cho đơn hàng SC250522-000123.',
     timeLabel: '1 ngày trước',
   ),
   AppNotification(
     id: 'order_done',
-    type: NotificationType.orderCompleted,
+    type: NotificationType.order,
     title: 'Đơn hàng đã hoàn thành',
     message: 'Đơn hàng SC250522-000123 đã hoàn thành. Cảm ơn bạn!',
     timeLabel: '1 ngày trước',
   ),
   AppNotification(
     id: 'order_preparing',
-    type: NotificationType.orderPreparing,
+    type: NotificationType.order,
     title: 'Đơn hàng đang được chuẩn bị',
     message: 'Đơn hàng SC250522-000087 đang được chuẩn bị tại quầy A.',
     timeLabel: '1 ngày trước',

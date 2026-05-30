@@ -14,7 +14,6 @@ enum ProfileMenuAction {
   points,
   activity,
   support,
-  referral,
 }
 
 class OrderStatusSummary {
@@ -144,10 +143,6 @@ const demoUserProfile = UserProfile(
     ProfileMenuOption(
       action: ProfileMenuAction.support,
       title: 'Trung tâm trợ giúp',
-    ),
-    ProfileMenuOption(
-      action: ProfileMenuAction.referral,
-      title: 'Giới thiệu bạn bè',
     ),
   ],
 );
