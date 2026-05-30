@@ -17,6 +17,10 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/smart_canteen/main_shell_screen.dart';
+import 'screens/smart_canteen/vouchers/my_vouchers_screen.dart';
+import 'screens/smart_canteen/promotion/promotion_screen.dart';
+
 
 bool firebaseAvailable = false;
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
@@ -95,6 +99,18 @@ class SmartCanteenApp extends StatelessWidget {
           case '/forgot-password':
             return AppPageTransition<void>(
               builder: (_) => const ForgotPasswordScreen(),
+            );
+          case '/menu':
+            return AppPageTransition<void>(
+              builder: (_) => const MainShellScreen(initialIndex: 1),
+            );
+          case '/vouchers':
+            return AppPageTransition<void>(
+              builder: (_) => const MyVouchersScreen(),
+            );
+          case '/promotions':
+            return AppPageTransition<void>(
+              builder: (_) => const PromotionScreen(),
             );
           default:
             return null;

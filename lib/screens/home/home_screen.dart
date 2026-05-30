@@ -1,4 +1,10 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/navigation/app_navigator.dart';
@@ -22,10 +28,36 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 2;
   bool _loading = true;
 
-  static const _grades = [
-    _GradeData('Lập trình di động', 'MOB401', 3, 8.7),
-    _GradeData('Cơ sở dữ liệu', 'DBS202', 3, 7.8),
-    _GradeData('Xác suất thống kê', 'STA103', 2, 4.7),
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _bannersSubscription;
+
+  String _displayName = 'Nguyễn Hải Nam';
+  List<Map<String, dynamic>> _banners = [];
+  bool _bannersLoading = true;
+
+  PageController? _pageController;
+  Timer? _timer;
+  int _currentIndicatorIndex = 0;
+
+  static const List<Map<String, dynamic>> _demoBanners = [
+    {
+      'title': 'Ăn ngon mỗi ngày',
+      'subtitle': 'Ưu đãi đến 20%',
+      'imageUrl': 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600&auto=format&fit=crop',
+      'actionText': 'Khám phá ngay',
+      'actionRoute': '/menu',
+      'isActive': true,
+      'sortOrder': 1,
+    },
+    {
+      'title': 'Voucher đặc biệt',
+      'subtitle': 'Giảm ngay 10k',
+      'imageUrl': 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?q=80&w=600&auto=format&fit=crop',
+      'actionText': 'Nhận ngay',
+      'actionRoute': '/vouchers',
+      'isActive': true,
+      'sortOrder': 2,
+    },
   ];
 
   @override
@@ -34,6 +66,132 @@ class _HomeScreenState extends State<HomeScreen> {
     Future<void>.delayed(const Duration(milliseconds: 680), () {
       if (mounted) setState(() => _loading = false);
     });
+
+    if (Firebase.apps.isNotEmpty) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        _displayName = _getUserNameFromData(null, user);
+        _userSubscription = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .snapshots()
+            .listen((doc) {
+              if (!mounted) return;
+              setState(() {
+                _displayName = _getUserNameFromData(doc.data(), user);
+              });
+            });
+      }
+
+      _bannersSubscription = FirebaseFirestore.instance
+          .collection('banners')
+          .where('isActive', isEqualTo: true)
+          .orderBy('sortOrder')
+          .snapshots()
+          .listen((snapshot) {
+            if (!mounted) return;
+            final list = snapshot.docs.map((doc) => doc.data()).toList();
+            setState(() {
+              _banners = list;
+              _bannersLoading = false;
+              _currentIndicatorIndex = 0;
+            });
+            _setupPageControllerAndTimer();
+          });
+    } else {
+      // Offline fallback
+      _banners = _demoBanners;
+      _bannersLoading = false;
+      _currentIndicatorIndex = 0;
+      _setupPageControllerAndTimer();
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_userSubscription?.cancel());
+    unawaited(_bannersSubscription?.cancel());
+    _timer?.cancel();
+    _pageController?.dispose();
+    super.dispose();
+  }
+
+  void _setupPageControllerAndTimer() {
+    if (_banners.isEmpty) return;
+    final startPage = (1000 ~/ _banners.length) * _banners.length;
+    if (_pageController != null) {
+      if (_pageController!.hasClients) {
+        _pageController!.jumpToPage(startPage);
+      }
+    } else {
+      _pageController = PageController(initialPage: startPage);
+    }
+    _startTimer();
+  }
+
+  bool get _isTesting {
+    try {
+      return Platform.environment.containsKey('FLUTTER_TEST');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    if (_banners.length <= 1) return;
+    if (_isTesting) return;
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_pageController != null && _pageController!.hasClients) {
+        _pageController!.nextPage(
+          duration: const Duration(milliseconds: 700),
+          curve: Curves.easeInOutCubic,
+        );
+      }
+    });
+  }
+
+  String _getGreeting() {
+    final now = DateTime.now();
+    final hour = now.hour;
+    if (hour >= 5 && hour < 11) {
+      return 'Chào buổi sáng ☀️';
+    } else if (hour >= 11 && hour < 14) {
+      return 'Chào buổi trưa 🌤️';
+    } else if (hour >= 14 && hour < 18) {
+      return 'Chào buổi chiều 🌥️';
+    } else if (hour >= 18 && hour < 22) {
+      return 'Chào buổi tối 🌙';
+    } else {
+      return 'Chúc ngủ ngon 😴';
+    }
+  }
+
+  String _getUserNameFromData(Map<String, dynamic>? data, User? currentUser) {
+    if (data != null) {
+      final fullName = data['fullName'] as String?;
+      if (fullName != null && fullName.trim().isNotEmpty) {
+        return fullName.trim();
+      }
+      final displayName = data['displayName'] as String?;
+      if (displayName != null && displayName.trim().isNotEmpty) {
+        return displayName.trim();
+      }
+    }
+    if (currentUser != null) {
+      final authDisplayName = currentUser.displayName;
+      if (authDisplayName != null && authDisplayName.trim().isNotEmpty) {
+        return authDisplayName.trim();
+      }
+      final email = currentUser.email;
+      if (email != null && email.isNotEmpty) {
+        final parts = email.split('@');
+        if (parts.isNotEmpty && parts[0].isNotEmpty) {
+          return parts[0];
+        }
+      }
+    }
+    return 'Nguyễn Hải Nam';
   }
 
   void _onNavigationTap(int value) {
@@ -106,8 +264,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _header() {
     return GradientHeader(
       height: 222,
-      subtitle: 'Chào buổi sáng,',
-      title: 'Nguyễn Hải Nam',
+      subtitle: _getGreeting(),
+      title: _displayName,
       trailing: Row(
         children: [
           _HeaderAction(
@@ -134,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 16),
         _miniApps(),
         const SizedBox(height: 16),
-        _resultsCard(),
+        _bannerSlider(),
       ],
     );
   }
@@ -235,27 +393,177 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _resultsCard() {
-    return InfoCard(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text('Điểm gần đây', style: AppTextStyles.title),
-              ),
-              TextButton(
-                onPressed: () =>
-                    showAppSnackBar(context, 'Đã tải tất cả kết quả học tập.'),
-                child: const Text('Xem tất cả'),
-              ),
-            ],
+  Widget _bannerSlider() {
+    if (_bannersLoading) {
+      return const SkeletonBox(height: 160, radius: 22);
+    }
+    if (_banners.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    if (_pageController == null) {
+      final startPage = (1000 ~/ _banners.length) * _banners.length;
+      _pageController = PageController(initialPage: startPage);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _startTimer();
+      });
+    }
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 160,
+          child: PageView.builder(
+            controller: _pageController,
+            onPageChanged: (index) {
+              if (_banners.isNotEmpty) {
+                setState(() {
+                  _currentIndicatorIndex = index % _banners.length;
+                });
+                _startTimer();
+              }
+            },
+            itemBuilder: (context, index) {
+              final bannerIndex = index % _banners.length;
+              final banner = _banners[bannerIndex];
+              final imageUrl = banner['imageUrl'] as String? ?? '';
+              final title = banner['title'] as String? ?? '';
+              final subtitle = banner['subtitle'] as String? ?? '';
+              final actionText = banner['actionText'] as String? ?? '';
+              final actionRoute = banner['actionRoute'] as String? ?? '';
+
+              return GestureDetector(
+                onTap: () {
+                  if (actionRoute.isNotEmpty) {
+                    Navigator.pushNamed(context, actionRoute);
+                  }
+                },
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      (imageUrl.isNotEmpty && !_isTesting)
+                          ? CachedNetworkImage(
+                              imageUrl: imageUrl,
+                              fit: BoxFit.cover,
+                              fadeInDuration: const Duration(milliseconds: 300),
+                              placeholder: (context, url) => const SkeletonBox(height: 160, radius: 22),
+                              errorWidget: (context, url, error) => Container(
+                                color: AppColors.surfaceSoft,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.broken_image_rounded,
+                                    color: AppColors.textTertiary,
+                                    size: 40,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Container(
+                              color: AppColors.surfaceSoft,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.image_outlined,
+                                  color: AppColors.textTertiary,
+                                  size: 40,
+                                ),
+                              ),
+                            ),
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.65),
+                                Colors.black.withValues(alpha: 0.2),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (subtitle.isNotEmpty)
+                              Text(
+                                subtitle,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            const SizedBox(height: 4),
+                            Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            if (actionText.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Text(
+                                  actionText,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
-          const SizedBox(height: 6),
-          for (final item in _grades) _GradeRow(data: item),
-        ],
-      ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(_banners.length, (index) {
+            final isActive = index == _currentIndicatorIndex;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              height: 8,
+              width: isActive ? 18 : 8,
+              decoration: BoxDecoration(
+                color: isActive ? AppColors.primary : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 }
@@ -341,62 +649,7 @@ class _StatLine extends StatelessWidget {
   }
 }
 
-class _GradeRow extends StatelessWidget {
-  const _GradeRow({required this.data});
 
-  final _GradeData data;
-
-  @override
-  Widget build(BuildContext context) {
-    final passed = data.score >= 5;
-    final status = passed ? AppColors.success : AppColors.error;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.name,
-                  style: AppTextStyles.body.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${data.code}  •  ${data.credits} tín chỉ',
-                  style: AppTextStyles.label,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                data.score.toStringAsFixed(1),
-                style: AppTextStyles.heading.copyWith(color: status),
-              ),
-              Text(
-                passed ? 'Đạt' : 'Chưa đạt',
-                style: AppTextStyles.label.copyWith(color: status),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _DashboardSkeleton extends StatelessWidget {
   const _DashboardSkeleton();
@@ -410,17 +663,8 @@ class _DashboardSkeleton extends StatelessWidget {
         SizedBox(height: 16),
         SkeletonBox(height: 144, radius: 24),
         SizedBox(height: 16),
-        SkeletonBox(height: 248, radius: 24),
+        SkeletonBox(height: 160, radius: 22),
       ],
     );
   }
-}
-
-class _GradeData {
-  const _GradeData(this.name, this.code, this.credits, this.score);
-
-  final String name;
-  final String code;
-  final int credits;
-  final double score;
 }
