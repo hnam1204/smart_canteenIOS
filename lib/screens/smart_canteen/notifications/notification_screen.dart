@@ -40,17 +40,28 @@ class NotificationScreen extends StatefulWidget {
 
 class _NotificationScreenState extends State<NotificationScreen> {
   late final NotificationController _controller;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _controller = NotificationController()..load();
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _controller.loadMore();
+    }
   }
 
   void _replace(Widget screen) {
@@ -232,6 +243,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                             color: AppColors.primary,
                             onRefresh: _controller.refresh,
                             child: ListView.builder(
+                              controller: _scrollController,
                               physics: const AlwaysScrollableScrollPhysics(
                                 parent: BouncingScrollPhysics(),
                               ),
@@ -239,17 +251,59 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               itemCount: items.length + 1,
                               itemBuilder: (context, index) {
                                 if (index == items.length) {
+                                  if (_controller.hasMore) {
+                                    return const Padding(
+                                      padding: EdgeInsets.symmetric(vertical: 16),
+                                      child: Center(
+                                        child: SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
                                   return _MarkReadButton(
                                     enabled: _controller.unreadCount > 0,
                                     onPressed: _markAllAsRead,
                                   );
                                 }
                                 final notification = items[index];
-                                return NotificationCard(
-                                  key: ValueKey(notification.id),
-                                  notification: notification,
-                                  onDetailsTap: () =>
-                                      _openDetails(notification),
+                                return Dismissible(
+                                  key: Key('dismiss_${notification.id}'),
+                                  direction: DismissDirection.endToStart,
+                                  background: Container(
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.error,
+                                      borderRadius: BorderRadius.circular(22),
+                                    ),
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 20),
+                                    child: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  onDismissed: (direction) {
+                                    _controller.deleteNotification(notification.id);
+                                    showAppSnackBar(
+                                      context,
+                                      'Đã xóa thông báo.',
+                                      icon: Icons.delete_sweep_rounded,
+                                      iconColor: AppColors.error,
+                                    );
+                                  },
+                                  child: NotificationCard(
+                                    key: ValueKey(notification.id),
+                                    notification: notification,
+                                    onDetailsTap: () =>
+                                        _openDetails(notification),
+                                  ),
                                 );
                               },
                             ),

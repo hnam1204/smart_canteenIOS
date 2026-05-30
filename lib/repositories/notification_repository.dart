@@ -18,6 +18,20 @@ class NotificationRepository {
         fromFirestore: NotificationModel.fromFirestore,
       );
 
+  Stream<List<NotificationModel>> watchNotificationsPaged(String userId, int limit) =>
+      _service.streamCollection(
+        query: _service
+            .collection('notifications')
+            .where('userId', isEqualTo: userId)
+            .orderBy('createdAt', descending: true)
+            .limit(limit),
+        fromFirestore: NotificationModel.fromFirestore,
+      );
+
+  Future<void> deleteNotification(String id) => _service.delete(
+        _service.collection('notifications').doc(id),
+      );
+
   Stream<int> watchUnreadCount(String userId) => _service
       .collection('notifications')
       .where('userId', isEqualTo: userId)

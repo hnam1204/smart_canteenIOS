@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../main.dart' show appNavigatorKey;
 import '../screens/smart_canteen/help_center/support_chat_screen.dart';
@@ -22,239 +19,118 @@ class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
-  
   bool _initialized = false;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
+  StreamSubscription<QuerySnapshot>? _firestoreSubscription;
+  DateTime? _listenerStartTime;
+  final Set<String> _shownNotificationIds = {};
 
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
 
-    // Configure foreground presentation behavior for iOS
-    await _messaging.setForegroundNotificationPresentationOptions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    // Listen to Firebase Auth changes to bind/unbind Firestore realtime notifications stream
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        startListening(user.uid);
+      } else {
+        stopListening();
+      }
+    });
+  }
 
-    // Initialize Local Notifications
-    const DarwinInitializationSettings initializationSettingsDarwin = DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    );
-    const InitializationSettings initializationSettings = InitializationSettings(
-      iOS: initializationSettingsDarwin,
-    );
+  void startListening(String userId) {
+    stopListening();
+    _listenerStartTime = DateTime.now();
+    _shownNotificationIds.clear();
 
-    await _localNotifications.initialize(
-      settings: initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        final payload = response.payload;
-        if (payload != null) {
-          try {
-            final Map<String, dynamic> data = jsonDecode(payload) as Map<String, dynamic>;
-            handleNotificationTap(data);
-          } catch (e) {
-            debugPrint('Error parsing notification response: $e');
+    _firestoreSubscription = FirebaseFirestore.instance
+        .collection('notifications')
+        .where('userId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .limit(10) // Fetch top 10 to listen to new ones
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.docs.isEmpty) return;
+
+          for (final doc in snapshot.docs) {
+            final data = doc.data();
+            final docId = doc.id;
+
+            // Skip if notification has already been processed/shown
+            if (_shownNotificationIds.contains(docId)) continue;
+
+            final createdAt = data['createdAt'];
+
+            // Skip if this is an old historical notification
+            if (createdAt is Timestamp) {
+              final docTime = createdAt.toDate();
+              if (_listenerStartTime != null &&
+                  docTime.isBefore(_listenerStartTime!.subtract(const Duration(seconds: 5)))) {
+                // Pre-add existing notifications to set so they won't trigger banners upon launch
+                _shownNotificationIds.add(docId);
+                continue;
+              }
+            }
+
+            // We only show banners for unread notifications
+            final isRead = data['isRead'] as bool? ?? false;
+            if (isRead) continue;
+
+            // Mark as processed/shown
+            _shownNotificationIds.add(docId);
+
+            final title = data['title'] as String? ?? '';
+            final message = data['message'] as String? ?? '';
+            final type = data['type'] as String? ?? 'system';
+            final referenceId = data['referenceId'] as String? ?? '';
+
+            // Show custom in-app banner
+            showInAppBanner(
+              title: title,
+              message: message,
+              type: type,
+              referenceId: referenceId,
+            );
           }
-        }
-      },
-    );
-
-    // Setup message event listeners
-    listenForegroundMessages();
-    listenBackgroundMessages();
-
-    // Tap callback while in background/terminated
-    _subscriptions.add(
-      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        handleNotificationTap(message.data);
-      }),
-    );
-
-    // Check if app was opened from terminated state by a notification
-    final initialMessage = await _messaging.getInitialMessage();
-    if (initialMessage != null) {
-      handleNotificationTap(initialMessage.data);
-    }
-
-    // Refresh token listener
-    _subscriptions.add(
-      _messaging.onTokenRefresh.listen((token) {
-        saveTokenToFirestore(token);
-      }),
-    );
-
-    // Attempt token retrieval and Firestore registration
-    await getFCMToken();
-  }
-
-  Future<bool> requestPermission() async {
-    final settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      _showSettingsDialog();
-      return false;
-    }
-
-    return settings.authorizationStatus == AuthorizationStatus.authorized ||
-        settings.authorizationStatus == AuthorizationStatus.provisional;
-  }
-
-  Future<String?> getFCMToken() async {
-    try {
-      final token = await _messaging.getToken();
-      if (token != null) {
-        await saveTokenToFirestore(token);
-      }
-      return token;
-    } catch (e) {
-      debugPrint('Error getting FCM token: $e');
-      return null;
-    }
-  }
-
-  Future<void> saveTokenToFirestore(String token) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'fcmTokens': FieldValue.arrayUnion([token]),
-        'lastFcmToken': token,
-        'notificationEnabled': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Error saving FCM token to Firestore: $e');
-    }
-  }
-
-  Future<void> removeTokenFromFirestore() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      final token = await _messaging.getToken();
-      if (token != null) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-          'fcmTokens': FieldValue.arrayRemove([token]),
-          'updatedAt': FieldValue.serverTimestamp(),
         });
-      }
-    } catch (e) {
-      debugPrint('Error removing FCM token from Firestore: $e');
-    }
   }
 
-  void listenForegroundMessages() {
-    _subscriptions.add(
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-        debugPrint('Foreground message received: ${message.messageId}');
-        await _showLocalNotification(message);
-        await updateBadgeCount();
-      }),
-    );
+  void stopListening() {
+    _firestoreSubscription?.cancel();
+    _firestoreSubscription = null;
+    _shownNotificationIds.clear();
   }
 
-  void listenBackgroundMessages() {
-    // The background handler is set via FirebaseMessaging.onBackgroundMessage in main.dart
-  }
-
-  Future<void> _showLocalNotification(RemoteMessage message) async {
-    final notification = message.notification;
-    if (notification == null) return;
-
-    final data = message.data;
-    const iOSPlatformChannelSpecifics = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-    );
-    const platformChannelSpecifics = NotificationDetails(
-      iOS: iOSPlatformChannelSpecifics,
-    );
-
-    await _localNotifications.show(
-      id: notification.hashCode,
-      title: notification.title,
-      body: notification.body,
-      notificationDetails: platformChannelSpecifics,
-      payload: jsonEncode(data),
-    );
-  }
-
-  Future<void> updateBadgeCount() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('notifications')
-          .where('userId', isEqualTo: user.uid)
-          .where('isRead', isEqualTo: false)
-          .get();
-      final count = snapshot.docs.length;
-      await setBadge(count);
-    } catch (e) {
-      debugPrint('Error querying unread notification count for badge: $e');
-    }
-  }
-
-  static const MethodChannel _badgeChannel = MethodChannel('com.huflit.smart_canteen/badge');
-  Future<void> setBadge(int count) async {
-    try {
-      await _badgeChannel.invokeMethod('setBadge', count);
-    } catch (e) {
-      debugPrint('Error setting badge count natively: $e');
-    }
-  }
-
-  static const MethodChannel _settingsChannel = MethodChannel('com.huflit.smart_canteen/settings');
-  Future<void> openAppSettings() async {
-    try {
-      await _settingsChannel.invokeMethod('openSettings');
-    } catch (e) {
-      debugPrint('Error opening app settings: $e');
-    }
-  }
-
-  void _showSettingsDialog() {
+  void showInAppBanner({
+    required String title,
+    required String message,
+    required String type,
+    required String referenceId,
+  }) {
     final context = appNavigatorKey.currentContext;
     if (context == null) return;
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        surfaceTintColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: const Text('Quyền thông báo'),
-        content: const Text(
-          'Quyền nhận thông báo hiện đang bị từ chối. Vui lòng mở Cài đặt để bật quyền thông báo cho ứng dụng.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              openAppSettings();
-            },
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF6B00)),
-            child: const Text('Đi tới Cài đặt'),
-          ),
-        ],
+    // Trigger haptic feedback
+    HapticFeedback.lightImpact().catchError((_) {});
+
+    // Create and insert overlay entry
+    late OverlayEntry overlayEntry;
+    overlayEntry = OverlayEntry(
+      builder: (context) => _InAppNotificationBanner(
+        title: title,
+        message: message,
+        type: type,
+        referenceId: referenceId,
+        onDismiss: () {
+          try {
+            overlayEntry.remove();
+          } catch (_) {}
+        },
       ),
     );
+
+    Overlay.of(context).insert(overlayEntry);
   }
 
   void handleNotificationTap(Map<String, dynamic> data) {
@@ -296,11 +172,251 @@ class NotificationService {
     );
   }
 
+  // ────────────────────────────────────────────────────────────────────
+  // Stubs for Backwards Compatibility
+  // ────────────────────────────────────────────────────────────────────
+  Future<bool> requestPermission() async {
+    return true; // Auto approved for in-app client-side listeners
+  }
+
+  Future<String?> getFCMToken() async {
+    return null;
+  }
+
+  Future<void> saveTokenToFirestore(String token) async {
+    // Stub
+  }
+
+  Future<void> removeTokenFromFirestore() async {
+    // Stub
+  }
+
+  static const MethodChannel _badgeChannel = MethodChannel('com.huflit.smart_canteen/badge');
+  Future<void> setBadge(int count) async {
+    try {
+      await _badgeChannel.invokeMethod('setBadge', count);
+    } catch (e) {
+      debugPrint('Error setting badge count natively: $e');
+    }
+  }
+
   Future<void> dispose() async {
+    stopListening();
     for (final subscription in _subscriptions) {
       await subscription.cancel();
     }
     _subscriptions.clear();
     _initialized = false;
+  }
+}
+
+class _InAppNotificationBanner extends StatefulWidget {
+  const _InAppNotificationBanner({
+    required this.title,
+    required this.message,
+    required this.type,
+    required this.referenceId,
+    required this.onDismiss,
+  });
+
+  final String title;
+  final String message;
+  final String type;
+  final String referenceId;
+  final VoidCallback onDismiss;
+
+  @override
+  State<_InAppNotificationBanner> createState() => _InAppNotificationBannerState();
+}
+
+class _InAppNotificationBannerState extends State<_InAppNotificationBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<Offset> _offsetAnimation;
+  Timer? _dismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+
+    _offsetAnimation = Tween<Offset>(
+      begin: const Offset(0, -1.2),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutBack,
+    ));
+
+    _controller.forward();
+
+    // Auto dismiss after 5 seconds
+    _dismissTimer = Timer(const Duration(seconds: 5), _dismiss);
+  }
+
+  @override
+  void dispose() {
+    _dismissTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _dismiss() {
+    _controller.reverse().then((_) {
+      widget.onDismiss();
+    });
+  }
+
+  Color _typeColor(String type) {
+    switch (type) {
+      case 'order':
+        return const Color(0xFF2176E8);
+      case 'payment':
+        return const Color(0xFF13A457);
+      case 'support':
+        return const Color(0xFFFF6B00); // AppColors.primary
+      case 'voucher':
+        return const Color(0xFF13A457);
+      case 'reward':
+        return const Color(0xFF7C4DCC);
+      case 'review':
+        return const Color(0xFFE28743);
+      case 'promotion':
+        return const Color(0xFFFF6B00);
+      case 'system':
+        return const Color(0xFFE74680);
+      default:
+        return const Color(0xFF6B7280);
+    }
+  }
+
+  IconData _typeIcon(String type) {
+    switch (type) {
+      case 'order':
+        return Icons.receipt_long_outlined;
+      case 'payment':
+        return Icons.payment_outlined;
+      case 'support':
+        return Icons.support_agent_rounded;
+      case 'voucher':
+        return Icons.card_giftcard_rounded;
+      case 'reward':
+        return Icons.celebration_rounded;
+      case 'review':
+        return Icons.rate_review_rounded;
+      case 'promotion':
+        return Icons.local_offer_rounded;
+      case 'system':
+        return Icons.campaign_rounded;
+      default:
+        return Icons.notifications_outlined;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final topPadding = media.padding.top + 12;
+
+    return Positioned(
+      top: topPadding,
+      left: 16,
+      right: 16,
+      child: SlideTransition(
+        position: _offsetAnimation,
+        child: GestureDetector(
+          onTap: () {
+            _dismissTimer?.cancel();
+            _controller.reverse().then((_) {
+              widget.onDismiss();
+              NotificationService.instance.handleNotificationTap({
+                'type': widget.type,
+                'referenceId': widget.referenceId,
+              });
+            });
+          },
+          onVerticalDragEnd: (details) {
+            if (details.primaryVelocity != null && details.primaryVelocity! < 0) {
+              _dismiss();
+            }
+          },
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+                border: Border.all(color: const Color(0xFFEEEEEE)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: _typeColor(widget.type).withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _typeIcon(widget.type),
+                      color: _typeColor(widget.type),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          widget.message,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF4B5563),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF9CA3AF)),
+                    onPressed: _dismiss,
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

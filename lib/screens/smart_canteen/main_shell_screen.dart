@@ -46,7 +46,7 @@ class MainShellScreen extends StatefulWidget {
   State<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends State<MainShellScreen> {
+class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingObserver {
   late int _selectedIndex;
   late final List<Widget?> _pages;
   late final CartProvider _cartProvider;
@@ -55,6 +55,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedIndex = widget.initialIndex;
     _pages = List<Widget?>.filled(5, null);
     _cartProvider = CartProvider()..addListener(_onBadgeChanged);
@@ -67,11 +68,24 @@ class _MainShellScreenState extends State<MainShellScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _cartProvider.removeListener(_onBadgeChanged);
     _notificationProvider.removeListener(_onBadgeChanged);
     _cartProvider.dispose();
     _notificationProvider.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshAllData();
+    }
+  }
+
+  void _refreshAllData() {
+    _cartProvider.bindCurrentUser();
+    _notificationProvider.bindCurrentUser();
   }
 
   void _onBadgeChanged() {

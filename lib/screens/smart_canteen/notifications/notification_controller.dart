@@ -20,9 +20,13 @@ class NotificationController extends ChangeNotifier {
   bool _disposed = false;
   StreamSubscription<List<firestore.NotificationModel>>? _subscription;
 
+  int _limit = 20;
+  bool _hasMore = true;
+
   NotificationFilter get filter => _filter;
   bool get loading => _loading;
   bool get refreshing => _refreshing;
+  bool get hasMore => _hasMore;
 
   int get unreadCount =>
       _notifications.where((notification) => notification.isUnread).length;
@@ -35,19 +39,23 @@ class NotificationController extends ChangeNotifier {
   }
 
   Future<void> load() async {
-    _loading = true;
-    notifyListeners();
+    // If not actively refreshing/loading more, set loading state
+    if (!_refreshing && _notifications.isEmpty) {
+      _loading = true;
+      notifyListeners();
+    }
     if (Firebase.apps.isNotEmpty && FirebaseAuth.instance.currentUser != null) {
       _repository ??= NotificationRepository();
       await _subscription?.cancel();
       _subscription = _repository!
-          .watchNotifications(FirebaseAuth.instance.currentUser!.uid)
+          .watchNotificationsPaged(FirebaseAuth.instance.currentUser!.uid, _limit)
           .listen(
             (notifications) {
               if (_disposed) return;
               _notifications = notifications
                   .map(_fromFirestore)
                   .toList(growable: false);
+              _hasMore = notifications.length >= _limit;
               _loading = false;
               _refreshing = false;
               notifyListeners();
@@ -64,12 +72,40 @@ class NotificationController extends ChangeNotifier {
     await Future<void>.delayed(const Duration(milliseconds: 520));
     if (_disposed) return;
     _notifications = List<AppNotification>.of(demoNotifications);
+    _hasMore = false;
     _loading = false;
     notifyListeners();
   }
 
+  void loadMore() {
+    if (_loading || _refreshing || !_hasMore) return;
+    if (Firebase.apps.isNotEmpty && FirebaseAuth.instance.currentUser != null) {
+      _limit += 20;
+      load();
+    }
+  }
+
+  Future<void> deleteNotification(String id) async {
+    // Optimistic UI update: remove from local list immediately
+    _notifications = _notifications.where((n) => n.id != id).toList(growable: false);
+    notifyListeners();
+
+    if (Firebase.apps.isNotEmpty && FirebaseAuth.instance.currentUser != null) {
+      try {
+        _repository ??= NotificationRepository();
+        await _repository!.deleteNotification(id);
+      } catch (e) {
+        debugPrint('Error deleting notification from Firestore: $e');
+        // Reload if delete failed on server
+        await load();
+      }
+    }
+  }
+
   Future<void> refresh() async {
     if (Firebase.apps.isNotEmpty && FirebaseAuth.instance.currentUser != null) {
+      _limit = 20;
+      _hasMore = true;
       _refreshing = true;
       notifyListeners();
       await load();
