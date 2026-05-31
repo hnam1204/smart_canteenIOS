@@ -31,7 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userSubscription;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _bannersSubscription;
 
-  String _displayName = 'Nguyễn Hải Nam';
+  String _displayName = '';
   List<Map<String, dynamic>> _banners = [];
   bool _bannersLoading = true;
 
@@ -43,7 +43,8 @@ class _HomeScreenState extends State<HomeScreen> {
     {
       'title': 'Ăn ngon mỗi ngày',
       'subtitle': 'Ưu đãi đến 20%',
-      'imageUrl': 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600&auto=format&fit=crop',
+      'imageUrl':
+          'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600&auto=format&fit=crop',
       'actionText': 'Khám phá ngay',
       'actionRoute': '/menu',
       'isActive': true,
@@ -52,7 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
     {
       'title': 'Voucher đặc biệt',
       'subtitle': 'Giảm ngay 10k',
-      'imageUrl': 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?q=80&w=600&auto=format&fit=crop',
+      'imageUrl':
+          'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?q=80&w=600&auto=format&fit=crop',
       'actionText': 'Nhận ngay',
       'actionRoute': '/vouchers',
       'isActive': true,
@@ -197,12 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onNavigationTap(int value) {
     setState(() => _currentIndex = value);
     if (value != 2) {
-      showAppSnackBar(
-        context,
-        'Tính năng đang được hoàn thiện.',
-        icon: Icons.auto_awesome_rounded,
-        iconColor: AppColors.primaryLight,
-      );
+      showAppSnackBar(context, 'Tính năng demo. Vui lòng quay lại sau nhé!');
     }
   }
 
@@ -452,7 +449,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               imageUrl: imageUrl,
                               fit: BoxFit.cover,
                               fadeInDuration: const Duration(milliseconds: 300),
-                              placeholder: (context, url) => const SkeletonBox(height: 160, radius: 22),
+                              placeholder: (context, url) =>
+                                  const SkeletonBox(height: 160, radius: 22),
                               errorWidget: (context, url, error) => Container(
                                 color: AppColors.surfaceSoft,
                                 child: const Center(
@@ -648,8 +646,6 @@ class _StatLine extends StatelessWidget {
     );
   }
 }
-
-
 
 class _DashboardSkeleton extends StatelessWidget {
   const _DashboardSkeleton();
