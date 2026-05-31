@@ -736,22 +736,22 @@ class VoucherModel {
   ) {
     final data = doc.data() ?? const {};
     return VoucherModel(
-      id: _string(data['id']).isEmpty ? doc.id : _string(data['id']),
-      title: _string(data['title']),
-      code: _string(data['code']),
-      description: _string(data['description']),
-      discountType: _string(data['discountType']),
+      id: (data['id'] ?? doc.id).toString(),
+      title: (data['title'] ?? 'Ưu đãi').toString(),
+      code: (data['code'] ?? '').toString(),
+      description: (data['description'] ?? '').toString(),
+      discountType: (data['discountType'] ?? '').toString(),
       discountValue: _int(data['discountValue']),
       minOrderAmount: _int(data['minOrderAmount']),
-      maxDiscount: _int(data['maxDiscount']),
+      maxDiscount: _int(data['maxDiscount'] ?? data['maxDiscountAmount']),
       usageLimit: _int(data['usageLimit']),
       usedCount: _int(data['usedCount']),
-      claimLimit: _int(data['claimLimit']),
+      claimLimit: _int(data['claimLimit'] ?? 999999),
       claimedCount: _int(data['claimedCount']),
-      userLimit: _int(data['userLimit']),
+      userLimit: _int(data['userLimit'] ?? 1),
       exchangePoints: _int(data['exchangePoints']),
       isExchangeable: _bool(data['isExchangeable'], false),
-      isClaimable: _bool(data['isClaimable'], false),
+      isClaimable: _bool(data['isClaimable'], true),
       isActive: _bool(data['isActive'], true),
       startedAt: data.containsKey('startedAt') && data['startedAt'] != null
           ? _date(data['startedAt'])
@@ -855,34 +855,28 @@ class UserVoucherModel {
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final data = doc.data() ?? const {};
-    // Support both mobile-app field names and Admin-dashboard field names
-    final voucherId = _string(data['voucherId'] ?? data['id'] ?? '');
-    final voucherCode = _string(data['voucherCode'] ?? data['code'] ?? '');
-    final status = _string(data['status']).isEmpty
-        ? 'available'
-        : _string(data['status']);
-    final source = _string(data['source']).isEmpty
-        ? 'claim'
-        : _string(data['source']);
+    final title = (data['title'] ?? '').toString();
+    final voucherId = (data['voucherId'] ?? data['id'] ?? '').toString();
+    final voucherCode = (data['voucherCode'] ?? data['code'] ?? '').toString();
+    final status = (data['status'] ?? 'available').toString();
+    final source = (data['source'] ?? 'claim').toString();
     return UserVoucherModel(
-      id: _string(data['id']).isEmpty ? doc.id : _string(data['id']),
-      userId: _string(data['userId']),
+      id: (data['id'] ?? doc.id).toString(),
+      userId: (data['userId'] ?? '').toString(),
       voucherId: voucherId,
       voucherCode: voucherCode,
-      title: _string(data['title']),
-      description: _string(data['description']),
-      discountType: _string(data['discountType']),
+      title: title,
+      description: (data['description'] ?? '').toString(),
+      discountType: (data['discountType'] ?? '').toString(),
       discountValue: _int(data['discountValue']),
       minOrderAmount: _int(data['minOrderAmount']),
-      maxDiscount: _int(data['maxDiscount']),
+      maxDiscount: _int(data['maxDiscount'] ?? data['maxDiscountAmount']),
       source: source,
       status: status,
       claimedAt: _date(data['claimedAt']),
       expiredAt: _date(data['expiredAt']),
-      usedAt: data.containsKey('usedAt') && data['usedAt'] != null
-          ? _date(data['usedAt'])
-          : null,
-      orderId: _string(data['orderId']).isEmpty ? null : _string(data['orderId']),
+      usedAt: data['usedAt'] == null ? null : _date(data['usedAt']),
+      orderId: data['orderId']?.toString(),
     );
   }
 

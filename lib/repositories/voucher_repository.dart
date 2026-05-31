@@ -10,21 +10,84 @@ class VoucherRepository {
 
   final FirestoreService _service;
 
-  Stream<List<store.VoucherModel>> watchVouchers() => _service.streamCollection(
-    query: _service.collection('vouchers').orderBy('expiredAt'),
-    fromFirestore: store.VoucherModel.fromFirestore,
-  );
+  Stream<List<store.VoucherModel>> watchVouchers() async* {
+    final primaryQuery = _service.collection('vouchers').orderBy('expiredAt');
+    final fallbackQuery = _service.collection('vouchers');
 
-  Stream<List<store.UserVoucherModel>> watchUserVouchers(String userId) => _service.streamCollection(
-    query: _service.collection('user_vouchers')
+    bool useFallback = false;
+    try {
+      await for (final list in _service.streamCollection(
+        query: primaryQuery,
+        fromFirestore: store.VoucherModel.fromFirestore,
+      )) {
+        yield list;
+      }
+    } catch (e) {
+      if (e is FirebaseException && (e.code == 'failed-precondition' || e.message?.contains('index') == true)) {
+        debugPrint('LỖI THIẾU INDEX (vouchers): $e');
+        useFallback = true;
+      } else {
+        rethrow;
+      }
+    }
+
+    if (useFallback) {
+      await for (final list in _service.streamCollection(
+        query: fallbackQuery,
+        fromFirestore: store.VoucherModel.fromFirestore,
+      )) {
+        final sortedList = List<store.VoucherModel>.from(list)
+          ..sort((a, b) => a.expiredAt.compareTo(b.expiredAt));
+        yield sortedList;
+      }
+    }
+  }
+
+  Stream<List<store.UserVoucherModel>> watchUserVouchers(String userId) async* {
+    final primaryQuery = _service.collection('user_vouchers')
         .where('userId', isEqualTo: userId)
-        .orderBy('expiredAt'),
-    fromFirestore: store.UserVoucherModel.fromFirestore,
-  );
+        .orderBy('expiredAt');
+
+    final fallbackQuery = _service.collection('user_vouchers')
+        .where('userId', isEqualTo: userId);
+
+    bool useFallback = false;
+    try {
+      await for (final list in _service.streamCollection(
+        query: primaryQuery,
+        fromFirestore: store.UserVoucherModel.fromFirestore,
+      )) {
+        yield list;
+      }
+    } catch (e) {
+      if (e is FirebaseException && (e.code == 'failed-precondition' || e.message?.contains('index') == true)) {
+        debugPrint('LỖI THIẾU INDEX (user_vouchers): $e');
+        useFallback = true;
+      } else {
+        rethrow;
+      }
+    }
+
+    if (useFallback) {
+      await for (final list in _service.streamCollection(
+        query: fallbackQuery,
+        fromFirestore: store.UserVoucherModel.fromFirestore,
+      )) {
+        final sortedList = List<store.UserVoucherModel>.from(list)
+          ..sort((a, b) => a.expiredAt.compareTo(b.expiredAt));
+        yield sortedList;
+      }
+    }
+  }
 
   Future<store.VoucherModel?> getById(String id) => _service.getDocument(
     document: _service.collection('vouchers').doc(id),
     fromFirestore: store.VoucherModel.fromFirestore,
+  );
+
+  Future<store.UserVoucherModel?> getUserVoucherById(String id) => _service.getDocument(
+    document: _service.collection('user_vouchers').doc(id),
+    fromFirestore: store.UserVoucherModel.fromFirestore,
   );
 
   Future<void> save(store.VoucherModel voucher) => _service.set(
@@ -60,24 +123,25 @@ class VoucherRepository {
           throw Exception('Bạn đã nhận voucher này rồi.');
         }
 
-        final userVoucher = store.UserVoucherModel(
-          id: '${userId}_$voucherId',
-          userId: userId,
-          voucherId: voucher.id,
-          voucherCode: voucher.code,
-          title: voucher.title,
-          description: voucher.description,
-          discountType: voucher.discountType,
-          discountValue: voucher.discountValue,
-          minOrderAmount: voucher.minOrderAmount,
-          maxDiscount: voucher.maxDiscount,
-          source: 'claim',
-          status: 'available',
-          claimedAt: DateTime.now(),
-          expiredAt: voucher.expiredAt,
-        );
+        final userVoucherData = {
+          'id': '${userId}_$voucherId',
+          'userId': userId,
+          'voucherId': voucher.id,
+          'voucherCode': voucher.code,
+          'title': voucher.title,
+          'description': voucher.description,
+          'discountType': voucher.discountType,
+          'discountValue': voucher.discountValue,
+          'minOrderAmount': voucher.minOrderAmount,
+          'maxDiscount': voucher.maxDiscount,
+          'source': 'claim',
+          'status': 'active',
+          'claimedAt': FieldValue.serverTimestamp(),
+          'usedAt': null,
+          'expiredAt': Timestamp.fromDate(voucher.expiredAt),
+        };
 
-        transaction.set(userVoucherRef, userVoucher.toFirestore());
+        transaction.set(userVoucherRef, userVoucherData);
         transaction.update(voucherRef, {
           'claimedCount': FieldValue.increment(1),
         });
@@ -144,22 +208,23 @@ class VoucherRepository {
 
         final userVoucherRefFinal = firestore.collection('user_vouchers').doc(userVoucherId);
 
-        final userVoucher = store.UserVoucherModel(
-          id: userVoucherId,
-          userId: userId,
-          voucherId: voucher.id,
-          voucherCode: voucher.code,
-          title: voucher.title,
-          description: voucher.description,
-          discountType: voucher.discountType,
-          discountValue: voucher.discountValue,
-          minOrderAmount: voucher.minOrderAmount,
-          maxDiscount: voucher.maxDiscount,
-          source: 'exchange_points',
-          status: 'available',
-          claimedAt: DateTime.now(),
-          expiredAt: voucher.expiredAt,
-        );
+        final userVoucherData = {
+          'id': userVoucherId,
+          'userId': userId,
+          'voucherId': voucher.id,
+          'voucherCode': voucher.code,
+          'title': voucher.title,
+          'description': voucher.description,
+          'discountType': voucher.discountType,
+          'discountValue': voucher.discountValue,
+          'minOrderAmount': voucher.minOrderAmount,
+          'maxDiscount': voucher.maxDiscount,
+          'source': 'exchange_points',
+          'status': 'active',
+          'claimedAt': FieldValue.serverTimestamp(),
+          'usedAt': null,
+          'expiredAt': Timestamp.fromDate(voucher.expiredAt),
+        };
 
         final historyRef = firestore.collection('reward_histories').doc();
         final historyData = {
@@ -172,7 +237,7 @@ class VoucherRepository {
           'status': 'success',
         };
 
-        transaction.set(userVoucherRefFinal, userVoucher.toFirestore());
+        transaction.set(userVoucherRefFinal, userVoucherData);
         transaction.update(voucherRef, {
           'claimedCount': FieldValue.increment(1),
         });

@@ -11,7 +11,10 @@ class VoucherProvider extends ChangeNotifier {
   VoucherProvider({VoucherRepository? repository}) : _repository = repository;
 
   VoucherRepository? _repository;
-  StreamSubscription<List<store.UserVoucherModel>>? _subscription;
+  StreamSubscription<List<store.UserVoucherModel>>? _userSub;
+  StreamSubscription<List<store.VoucherModel>>? _vouchersSub;
+  List<store.UserVoucherModel> _rawUserVouchers = const [];
+  List<store.VoucherModel> _rawVouchers = const [];
   List<store.VoucherModel> _vouchers = const [];
   bool _loading = false;
   String? _error;
@@ -21,7 +24,7 @@ class VoucherProvider extends ChangeNotifier {
   String? get error => _error;
 
   void bind() {
-    if (Firebase.apps.isEmpty || _subscription != null) return;
+    if (Firebase.apps.isEmpty || _userSub != null) return;
     _loading = true;
     notifyListeners();
     _repository ??= VoucherRepository();
@@ -34,31 +37,10 @@ class VoucherProvider extends ChangeNotifier {
       return;
     }
 
-    _subscription = _repository!.watchUserVouchers(user.uid).listen(
-      (items) {
-        _vouchers = items.map((uv) => store.VoucherModel(
-          id: uv.id, // UserVoucher ID
-          title: uv.title,
-          code: uv.voucherCode,
-          description: uv.description,
-          discountType: uv.discountType,
-          discountValue: uv.discountValue,
-          minOrderAmount: uv.minOrderAmount,
-          maxDiscount: uv.maxDiscount,
-          usageLimit: 1,
-          usedCount: uv.status == 'used' ? 1 : 0,
-          claimLimit: 1,
-          claimedCount: 1,
-          userLimit: 1,
-          exchangePoints: 0,
-          isExchangeable: false,
-          isClaimable: false,
-          isActive: uv.status == 'available',
-          expiredAt: uv.expiredAt,
-        )).toList();
-        _loading = false;
-        _error = null;
-        notifyListeners();
+    _vouchersSub = _repository!.watchVouchers().listen(
+      (vouchers) {
+        _rawVouchers = vouchers;
+        _combine();
       },
       onError: (Object error) {
         _loading = false;
@@ -66,6 +48,77 @@ class VoucherProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+
+    _userSub = _repository!.watchUserVouchers(user.uid).listen(
+      (items) {
+        _rawUserVouchers = items;
+        _combine();
+      },
+      onError: (Object error) {
+        _loading = false;
+        _error = error.toString();
+        notifyListeners();
+      },
+    );
+  }
+
+  void _combine() {
+    final combined = <store.VoucherModel>[];
+    for (final uv in _rawUserVouchers) {
+      store.VoucherModel? voucher;
+      final voucherId = uv.voucherId.trim();
+      if (voucherId.isNotEmpty) {
+        for (final v in _rawVouchers) {
+          if (v.id == voucherId) {
+            voucher = v;
+            break;
+          }
+        }
+      }
+      
+      if (voucher == null) {
+        final code = uv.voucherCode.trim();
+        if (code.isNotEmpty) {
+          for (final v in _rawVouchers) {
+            if (v.code == code) {
+              voucher = v;
+              break;
+            }
+          }
+        }
+      }
+
+      if (voucher == null) continue;
+
+      final isUsed = uv.status == 'used';
+      final isExpired = uv.status == 'expired' || uv.expiredAt.isBefore(DateTime.now());
+      final isActive = (uv.status == 'active' || uv.status == 'available') && !isExpired;
+
+      combined.add(store.VoucherModel(
+        id: uv.id, // UserVoucher document ID
+        title: voucher.title,
+        code: voucher.code,
+        description: voucher.description,
+        discountType: voucher.discountType,
+        discountValue: voucher.discountValue,
+        minOrderAmount: voucher.minOrderAmount,
+        maxDiscount: voucher.maxDiscount,
+        usageLimit: voucher.usageLimit,
+        usedCount: isUsed ? 1 : 0,
+        claimLimit: voucher.claimLimit,
+        claimedCount: voucher.claimedCount,
+        userLimit: voucher.userLimit,
+        exchangePoints: voucher.exchangePoints,
+        isExchangeable: voucher.isExchangeable,
+        isClaimable: voucher.isClaimable,
+        isActive: isActive,
+        expiredAt: uv.expiredAt,
+      ));
+    }
+    _vouchers = combined;
+    _loading = false;
+    _error = null;
+    notifyListeners();
   }
 
   List<store.VoucherModel> validFor(int subtotal) {
@@ -82,7 +135,8 @@ class VoucherProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    unawaited(_subscription?.cancel());
+    _vouchersSub?.cancel();
+    _userSub?.cancel();
     super.dispose();
   }
 }

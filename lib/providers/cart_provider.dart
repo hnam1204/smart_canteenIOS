@@ -76,7 +76,35 @@ class CartProvider extends ChangeNotifier {
                 VoucherModel? restored;
                 try {
                   _voucherRepository ??= VoucherRepository();
-                  restored = await _voucherRepository!.getById(voucherId);
+                  final userVoucher = await _voucherRepository!.getUserVoucherById(voucherId);
+                  if (userVoucher != null) {
+                    final baseVoucher = await _voucherRepository!.getById(userVoucher.voucherId);
+                    if (baseVoucher != null) {
+                      final isUsed = userVoucher.status == 'used';
+                      final isExpired = userVoucher.status == 'expired' || userVoucher.expiredAt.isBefore(DateTime.now());
+                      final isActive = (userVoucher.status == 'active' || userVoucher.status == 'available') && !isExpired;
+                      restored = VoucherModel(
+                        id: userVoucher.id,
+                        title: baseVoucher.title,
+                        code: baseVoucher.code,
+                        description: baseVoucher.description,
+                        discountType: baseVoucher.discountType,
+                        discountValue: baseVoucher.discountValue,
+                        minOrderAmount: baseVoucher.minOrderAmount,
+                        maxDiscount: baseVoucher.maxDiscount,
+                        usageLimit: baseVoucher.usageLimit,
+                        usedCount: isUsed ? 1 : 0,
+                        claimLimit: baseVoucher.claimLimit,
+                        claimedCount: baseVoucher.claimedCount,
+                        userLimit: baseVoucher.userLimit,
+                        exchangePoints: baseVoucher.exchangePoints,
+                        isExchangeable: baseVoucher.isExchangeable,
+                        isClaimable: baseVoucher.isClaimable,
+                        isActive: isActive,
+                        expiredAt: userVoucher.expiredAt,
+                      );
+                    }
+                  }
                 } on Object catch (error) {
                   if (_disposed) return;
                   _error = error.toString();

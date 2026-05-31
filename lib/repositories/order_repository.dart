@@ -101,7 +101,7 @@ class OrderRepository {
             throw Exception('Voucher của người dùng không tồn tại.');
           }
           final userVoucher = UserVoucherModel.fromFirestore(userVoucherSnap);
-          if (userVoucher.status != 'available') {
+          if (userVoucher.status != 'active' && userVoucher.status != 'available') {
             throw Exception('Voucher này đã được sử dụng hoặc hết hạn.');
           }
 
@@ -109,7 +109,7 @@ class OrderRepository {
 
           transaction.update(userVoucherRef, {
             'status': 'used',
-            'usedAt': Timestamp.now(),
+            'usedAt': FieldValue.serverTimestamp(),
             'orderId': doc.id,
           });
 

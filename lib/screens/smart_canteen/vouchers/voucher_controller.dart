@@ -147,34 +147,43 @@ class VoucherController extends ChangeNotifier {
     final now = DateTime.now();
     final List<VoucherModel> combined = [];
 
-    final claimedIds = _rawUserVouchers.map((uv) => uv.voucherId).toSet();
+    final claimedIds = _rawUserVouchers.map((uv) => uv.voucherId).where((id) => id.isNotEmpty).toSet();
+    final claimedCodes = _rawUserVouchers.map((uv) => uv.voucherCode).where((code) => code.isNotEmpty).toSet();
 
     if (_filter == VoucherFilter.claimable) {
-      // System vouchers that are claimable, active, not expired, and not claimed by the user yet
       final claimableVouchers = _rawVouchers.where((v) {
-        final isClaimed = claimedIds.contains(v.id);
+        final isClaimed = claimedIds.contains(v.id) || claimedCodes.contains(v.code);
         final isExpired = v.expiredAt.isBefore(now);
-        return v.isActive && v.isClaimable && !isClaimed && !isExpired && v.claimedCount < v.claimLimit;
+        return v.isActive && !isClaimed && !isExpired;
       });
       combined.addAll(claimableVouchers.map(_fromFirestoreVoucher));
     } else if (_filter == VoucherFilter.mine) {
-      // User vouchers with status 'available' and not expired
       final mineVouchers = _rawUserVouchers.where((uv) {
         final isExpired = uv.expiredAt.isBefore(now);
-        return uv.status == 'available' && !isExpired;
+        return (uv.status == 'active' || uv.status == 'available') && !isExpired;
       });
-      combined.addAll(mineVouchers.map(_fromFirestoreUserVoucher));
+      combined.addAll(
+        mineVouchers
+            .map(_mergeUserVoucher)
+            .whereType<VoucherModel>(),
+      );
     } else if (_filter == VoucherFilter.used) {
-      // User vouchers with status 'used'
       final usedVouchers = _rawUserVouchers.where((uv) => uv.status == 'used');
-      combined.addAll(usedVouchers.map(_fromFirestoreUserVoucher));
+      combined.addAll(
+        usedVouchers
+            .map(_mergeUserVoucher)
+            .whereType<VoucherModel>(),
+      );
     } else if (_filter == VoucherFilter.expired) {
-      // User vouchers with status 'expired' or available but expired
       final expiredVouchers = _rawUserVouchers.where((uv) {
         final isExpired = uv.expiredAt.isBefore(now);
-        return uv.status == 'expired' || (uv.status == 'available' && isExpired);
+        return uv.status == 'expired' || ((uv.status == 'active' || uv.status == 'available') && isExpired);
       });
-      combined.addAll(expiredVouchers.map(_fromFirestoreUserVoucher));
+      combined.addAll(
+        expiredVouchers
+            .map(_mergeUserVoucher)
+            .whereType<VoucherModel>(),
+      );
     }
 
     _vouchers = combined;
@@ -267,25 +276,31 @@ class VoucherController extends ChangeNotifier {
       }).length;
     }
     final now = DateTime.now();
-    final claimedIds = _rawUserVouchers.map((uv) => uv.voucherId).toSet();
+    final claimedIds = _rawUserVouchers.map((uv) => uv.voucherId).where((id) => id.isNotEmpty).toSet();
+    final claimedCodes = _rawUserVouchers.map((uv) => uv.voucherCode).where((code) => code.isNotEmpty).toSet();
 
     if (filter == VoucherFilter.claimable) {
       return _rawVouchers.where((v) {
-        final isClaimed = claimedIds.contains(v.id);
+        final isClaimed = claimedIds.contains(v.id) || claimedCodes.contains(v.code);
         final isExpired = v.expiredAt.isBefore(now);
-        return v.isActive && v.isClaimable && !isClaimed && !isExpired && v.claimedCount < v.claimLimit;
+        return v.isActive && !isClaimed && !isExpired;
       }).length;
     } else if (filter == VoucherFilter.mine) {
       return _rawUserVouchers.where((uv) {
         final isExpired = uv.expiredAt.isBefore(now);
-        return uv.status == 'available' && !isExpired;
+        final hasValidVoucher = _rawVouchers.any((v) => v.id == uv.voucherId || (v.code == uv.voucherCode && uv.voucherCode.isNotEmpty));
+        return (uv.status == 'active' || uv.status == 'available') && !isExpired && hasValidVoucher;
       }).length;
     } else if (filter == VoucherFilter.used) {
-      return _rawUserVouchers.where((uv) => uv.status == 'used').length;
+      return _rawUserVouchers.where((uv) {
+        final hasValidVoucher = _rawVouchers.any((v) => v.id == uv.voucherId || (v.code == uv.voucherCode && uv.voucherCode.isNotEmpty));
+        return uv.status == 'used' && hasValidVoucher;
+      }).length;
     } else if (filter == VoucherFilter.expired) {
       return _rawUserVouchers.where((uv) {
         final isExpired = uv.expiredAt.isBefore(now);
-        return uv.status == 'expired' || (uv.status == 'available' && isExpired);
+        final hasValidVoucher = _rawVouchers.any((v) => v.id == uv.voucherId || (v.code == uv.voucherCode && uv.voucherCode.isNotEmpty));
+        return (uv.status == 'expired' || ((uv.status == 'active' || uv.status == 'available') && isExpired)) && hasValidVoucher;
       }).length;
     }
     return 0;
@@ -337,10 +352,33 @@ class VoucherController extends ChangeNotifier {
     );
   }
 
-  VoucherModel _fromFirestoreUserVoucher(store.UserVoucherModel userVoucher) {
+  VoucherModel? _mergeUserVoucher(store.UserVoucherModel userVoucher) {
+    store.VoucherModel? voucher;
+    final voucherId = userVoucher.voucherId.trim();
+    if (voucherId.isNotEmpty) {
+      for (final v in _rawVouchers) {
+        if (v.id == voucherId) {
+          voucher = v;
+          break;
+        }
+      }
+    }
+    if (voucher == null) {
+      final code = userVoucher.voucherCode.trim();
+      if (code.isNotEmpty) {
+        for (final v in _rawVouchers) {
+          if (v.code == code) {
+            voucher = v;
+            break;
+          }
+        }
+      }
+    }
+    if (voucher == null) {
+      return null;
+    }
     final now = DateTime.now();
     final remaining = userVoucher.expiredAt.difference(now);
-    
     VoucherStatus status;
     if (userVoucher.status == 'used') {
       status = VoucherStatus.used;
@@ -351,30 +389,31 @@ class VoucherController extends ChangeNotifier {
     } else {
       status = VoucherStatus.available;
     }
-
-    final type = switch (userVoucher.discountType) {
+    final type = switch (voucher.discountType) {
       'percent' => VoucherType.percentDiscount,
       'freeShipping' => VoucherType.freeShipping,
       'freeItem' => VoucherType.freeItem,
       _ => VoucherType.amountDiscount,
     };
     final valueLabel = switch (type) {
-      VoucherType.percentDiscount => 'Giảm ${userVoucher.discountValue.toInt()}%',
+      VoucherType.percentDiscount => 'Giảm ${voucher.discountValue.toInt()}%',
       VoucherType.amountDiscount =>
-        '-${formatVoucherMoney(userVoucher.discountValue.toInt())}',
+        '-${formatVoucherMoney(voucher.discountValue.toInt())}',
       VoucherType.freeShipping => 'Freeship',
       VoucherType.freeItem => 'Tặng món',
     };
     final daySpan = userVoucher.expiredAt.difference(now).inDays;
     return VoucherModel(
       id: userVoucher.id,
-      title: userVoucher.title,
-      code: userVoucher.voucherCode,
+      title: voucher.title.isNotEmpty ? voucher.title : (userVoucher.title.isNotEmpty ? userVoucher.title : 'Ưu đãi'),
+      code: voucher.code.isNotEmpty ? voucher.code : userVoucher.voucherCode,
       type: type,
       valueLabel: valueLabel,
-      description: userVoucher.description.isNotEmpty ? userVoucher.description : valueLabel,
+      description: voucher.description.isNotEmpty
+          ? voucher.description
+          : (userVoucher.description.isNotEmpty ? userVoucher.description : valueLabel),
       condition:
-          'Đơn tối thiểu ${formatVoucherMoney(userVoucher.minOrderAmount.toInt())}',
+          'Đơn tối thiểu ${formatVoucherMoney(voucher.minOrderAmount.toInt())}',
       validFrom: _formatDate(userVoucher.claimedAt),
       validUntil: _formatDate(userVoucher.expiredAt),
       applicableFoods: const ['Tất cả món đủ điều kiện'],
