@@ -1,3 +1,4 @@
+import '../core/utils/perf_logger.dart';
 import '../firebase/firestore_service.dart';
 import '../models/firestore_models.dart';
 
@@ -21,7 +22,9 @@ class CategoryRepository {
     yield await syncCategories();
   }
 
-  Future<List<CategoryModel>> loadCategories({bool forceRefresh = false}) async {
+  Future<List<CategoryModel>> loadCategories({
+    bool forceRefresh = false,
+  }) async {
     if (!forceRefresh && hasCache) return getCachedCategories();
     return syncCategories(force: forceRefresh);
   }
@@ -41,13 +44,15 @@ class CategoryRepository {
   }
 
   Future<List<CategoryModel>> _fetchCategories() async {
-    final snapshot = await _service
-        .collection('categories')
-        .orderBy('sortOrder')
-        .get();
-    final categories = snapshot.docs
-        .map(CategoryModel.fromFirestore)
-        .toList(growable: false);
+    final categories = await traceAsync('loadCategories', () async {
+      final snapshot = await _service
+          .collection('categories')
+          .orderBy('sortOrder')
+          .get();
+      return snapshot.docs
+          .map(CategoryModel.fromFirestore)
+          .toList(growable: false);
+    });
     _cache = categories;
     _lastSyncAt = DateTime.now();
     return categories;

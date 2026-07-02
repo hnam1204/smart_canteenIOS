@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../../core/constants/colors.dart';
 
@@ -66,10 +67,18 @@ class AvatarPickerSection extends StatelessWidget {
                           color: const Color(0xFF7A3E2A),
                           size: 53,
                         )
-                      : Image.network(
-                          avatarUrl,
+                      : CachedNetworkImage(
+                          imageUrl: avatarUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Icon(
+                          memCacheWidth: 150,
+                          memCacheHeight: 150,
+                          placeholder: (context, url) => const Center(
+                            child: SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Icon(
                             avatarVariant == 1
                                 ? Icons.face_3_rounded
                                 : avatarVariant == 2

@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import '../core/utils/perf_logger.dart';
+import '../core/utils/repository_cache.dart';
 import '../core/utils/result.dart';
 import '../firebase/firestore_service.dart';
 import '../models/firestore_models.dart' as store;
@@ -9,10 +11,24 @@ class VoucherRepository {
     : _service = service ?? FirestoreService();
 
   final FirestoreService _service;
+  static CacheEntry<List<store.VoucherModel>>? _voucherCache;
+  static final Map<String, CacheEntry<List<store.UserVoucherModel>>>
+  _userVoucherCache = {};
+  static Future<List<store.VoucherModel>>? _voucherInFlight;
+  static final Map<String, Future<List<store.UserVoucherModel>>>
+  _userVoucherInFlight = {};
+  static const Duration _voucherTtl = Duration(minutes: 5);
+  static const Duration _userVoucherTtl = Duration(minutes: 3);
 
   Stream<List<store.VoucherModel>> watchVouchers() async* {
-    final primaryQuery = _service.collection('vouchers').orderBy('expiredAt');
-    final fallbackQuery = _service.collection('vouchers');
+    final primaryQuery = _service
+        .collection('vouchers')
+        .where('isActive', isEqualTo: true)
+        .orderBy('expiredAt');
+    final fallbackQuery = _service
+        .collection('vouchers')
+        .where('isActive', isEqualTo: true)
+        .limit(100);
 
     bool useFallback = false;
     try {
@@ -23,7 +39,7 @@ class VoucherRepository {
         yield list;
       }
     } catch (e) {
-      if (e is FirebaseException && (e.code == 'failed-precondition' || e.message?.contains('index') == true)) {
+      if (_isMissingIndex(e)) {
         debugPrint('LỖI THIẾU INDEX (vouchers): $e');
         useFallback = true;
       } else {
@@ -44,12 +60,15 @@ class VoucherRepository {
   }
 
   Stream<List<store.UserVoucherModel>> watchUserVouchers(String userId) async* {
-    final primaryQuery = _service.collection('user_vouchers')
+    final primaryQuery = _service
+        .collection('user_vouchers')
         .where('userId', isEqualTo: userId)
         .orderBy('expiredAt');
 
-    final fallbackQuery = _service.collection('user_vouchers')
-        .where('userId', isEqualTo: userId);
+    final fallbackQuery = _service
+        .collection('user_vouchers')
+        .where('userId', isEqualTo: userId)
+        .limit(100);
 
     bool useFallback = false;
     try {
@@ -60,7 +79,7 @@ class VoucherRepository {
         yield list;
       }
     } catch (e) {
-      if (e is FirebaseException && (e.code == 'failed-precondition' || e.message?.contains('index') == true)) {
+      if (_isMissingIndex(e)) {
         debugPrint('LỖI THIẾU INDEX (user_vouchers): $e');
         useFallback = true;
       } else {
@@ -80,15 +99,128 @@ class VoucherRepository {
     }
   }
 
+  Future<List<store.VoucherModel>> loadVouchers({
+    bool forceRefresh = false,
+  }) async {
+    final cached = _voucherCache;
+    if (!forceRefresh && cached != null && cached.isValid(_voucherTtl)) {
+      return cached.data;
+    }
+    final inFlight = _voucherInFlight;
+    if (inFlight != null) return inFlight;
+    final request = _fetchVouchers();
+    _voucherInFlight = request;
+    try {
+      return await request;
+    } finally {
+      _voucherInFlight = null;
+    }
+  }
+
+  Future<List<store.UserVoucherModel>> loadUserVouchers(
+    String userId, {
+    bool forceRefresh = false,
+  }) async {
+    final normalized = userId.trim();
+    if (normalized.isEmpty) return const <store.UserVoucherModel>[];
+    final cached = _userVoucherCache[normalized];
+    if (!forceRefresh && cached != null && cached.isValid(_userVoucherTtl)) {
+      return cached.data;
+    }
+    final inFlight = _userVoucherInFlight[normalized];
+    if (inFlight != null) return inFlight;
+    final request = _fetchUserVouchers(normalized);
+    _userVoucherInFlight[normalized] = request;
+    try {
+      return await request;
+    } finally {
+      _userVoucherInFlight.remove(normalized);
+    }
+  }
+
+  Future<List<store.VoucherModel>> _fetchVouchers() async {
+    final vouchers = await traceAsync('loadVouchers', () async {
+      try {
+        final snapshot = await _service
+            .collection('vouchers')
+            .where('isActive', isEqualTo: true)
+            .orderBy('expiredAt')
+            .limit(100)
+            .get();
+        return snapshot.docs
+            .map(store.VoucherModel.fromFirestore)
+            .toList(growable: false);
+      } on FirebaseException catch (error) {
+        if (!_isMissingIndex(error)) rethrow;
+        debugPrint(
+          'Missing index for vouchers query, using client sort: $error',
+        );
+        final snapshot = await _service
+            .collection('vouchers')
+            .where('isActive', isEqualTo: true)
+            .limit(100)
+            .get();
+        return snapshot.docs
+            .map(store.VoucherModel.fromFirestore)
+            .toList(growable: false)
+          ..sort((a, b) => a.expiredAt.compareTo(b.expiredAt));
+      }
+    });
+    _voucherCache = CacheEntry(data: vouchers, cachedAt: DateTime.now());
+    return vouchers;
+  }
+
+  Future<List<store.UserVoucherModel>> _fetchUserVouchers(String userId) async {
+    final vouchers = await traceAsync('loadUserVouchers', () async {
+      try {
+        final snapshot = await _service
+            .collection('user_vouchers')
+            .where('userId', isEqualTo: userId)
+            .orderBy('expiredAt')
+            .limit(100)
+            .get();
+        return snapshot.docs
+            .map(store.UserVoucherModel.fromFirestore)
+            .toList(growable: false);
+      } on FirebaseException catch (error) {
+        if (!_isMissingIndex(error)) rethrow;
+        debugPrint(
+          'Missing index for user_vouchers query, using client sort: $error',
+        );
+        final snapshot = await _service
+            .collection('user_vouchers')
+            .where('userId', isEqualTo: userId)
+            .limit(100)
+            .get();
+        return snapshot.docs
+            .map(store.UserVoucherModel.fromFirestore)
+            .toList(growable: false)
+          ..sort((a, b) => a.expiredAt.compareTo(b.expiredAt));
+      }
+    });
+    _userVoucherCache[userId] = CacheEntry(
+      data: vouchers,
+      cachedAt: DateTime.now(),
+    );
+    return vouchers;
+  }
+
+  bool _isMissingIndex(Object error) {
+    if (error is! FirebaseException) return false;
+    final message = error.message?.toLowerCase() ?? '';
+    return error.code == 'failed-precondition' || message.contains('index');
+  }
+
   Future<store.VoucherModel?> getById(String id) => _service.getDocument(
     document: _service.collection('vouchers').doc(id),
     fromFirestore: store.VoucherModel.fromFirestore,
   );
 
-  Future<store.UserVoucherModel?> getUserVoucherById(String id) => _service.getDocument(
-    document: _service.collection('user_vouchers').doc(id),
-    fromFirestore: store.UserVoucherModel.fromFirestore,
-  );
+  Future<store.UserVoucherModel?> getUserVoucherById(String id) =>
+      _service.getDocument(
+        document: _service.collection('user_vouchers').doc(id),
+        fromFirestore: store.UserVoucherModel.fromFirestore,
+      );
 
   Future<void> save(store.VoucherModel voucher) => _service.set(
     _service.collection('vouchers').doc(voucher.id),
@@ -99,7 +231,9 @@ class VoucherRepository {
     try {
       final firestore = _service.firestore;
       final voucherRef = firestore.collection('vouchers').doc(voucherId);
-      final userVoucherRef = firestore.collection('user_vouchers').doc('${userId}_$voucherId');
+      final userVoucherRef = firestore
+          .collection('user_vouchers')
+          .doc('${userId}_$voucherId');
 
       await firestore.runTransaction((transaction) async {
         final voucherSnap = await transaction.get(voucherRef);
@@ -142,15 +276,14 @@ class VoucherRepository {
         };
 
         transaction.set(userVoucherRef, userVoucherData);
-        transaction.update(voucherRef, {
-          'claimedCount': FieldValue.increment(1),
-        });
       });
       return Result.success(null);
     } on FirebaseException catch (e, stack) {
       debugPrint('FirebaseException in claimVoucher: $e\n$stack');
       String errMsg = 'Lỗi hệ thống Firestore';
-      if (e.code == 'permission-denied') errMsg = 'Không có quyền thực hiện thao tác này.';
+      if (e.code == 'permission-denied') {
+        errMsg = 'Không có quyền thực hiện thao tác này.';
+      }
       if (e.code == 'not-found') errMsg = 'Tài liệu không tìm thấy.';
       if (e.code == 'already-exists') errMsg = 'Dữ liệu đã tồn tại.';
       return Result.failure(errMsg);
@@ -167,7 +300,9 @@ class VoucherRepository {
     try {
       final firestore = _service.firestore;
       final voucherRef = firestore.collection('vouchers').doc(voucherId);
-      final userVoucherRef = firestore.collection('user_vouchers').doc('${userId}_$voucherId');
+      final userVoucherRef = firestore
+          .collection('user_vouchers')
+          .doc('${userId}_$voucherId');
       final userRef = firestore.collection('users').doc(userId);
 
       await firestore.runTransaction((transaction) async {
@@ -202,11 +337,13 @@ class VoucherRepository {
           throw Exception('Bạn không đủ điểm để đổi voucher này.');
         }
 
-        final userVoucherId = voucher.userLimit <= 1 
-            ? '${userId}_$voucherId' 
+        final userVoucherId = voucher.userLimit <= 1
+            ? '${userId}_$voucherId'
             : '${userId}_${voucherId}_${DateTime.now().millisecondsSinceEpoch}';
 
-        final userVoucherRefFinal = firestore.collection('user_vouchers').doc(userVoucherId);
+        final userVoucherRefFinal = firestore
+            .collection('user_vouchers')
+            .doc(userVoucherId);
 
         final userVoucherData = {
           'id': userVoucherId,
@@ -238,11 +375,9 @@ class VoucherRepository {
         };
 
         transaction.set(userVoucherRefFinal, userVoucherData);
-        transaction.update(voucherRef, {
-          'claimedCount': FieldValue.increment(1),
-        });
         transaction.update(userRef, {
           'points': FieldValue.increment(-voucher.exchangePoints),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
         transaction.set(historyRef, historyData);
       });
@@ -250,7 +385,9 @@ class VoucherRepository {
     } on FirebaseException catch (e, stack) {
       debugPrint('FirebaseException in exchangeVoucher: $e\n$stack');
       String errMsg = 'Lỗi hệ thống Firestore';
-      if (e.code == 'permission-denied') errMsg = 'Không có quyền thực hiện thao tác này.';
+      if (e.code == 'permission-denied') {
+        errMsg = 'Không có quyền thực hiện thao tác này.';
+      }
       if (e.code == 'not-found') errMsg = 'Tài liệu không tìm thấy.';
       if (e.code == 'already-exists') errMsg = 'Dữ liệu đã tồn tại.';
       return Result.failure(errMsg);
@@ -266,7 +403,8 @@ class VoucherRepository {
   Future<Result<void>> checkAndExpireUserVouchers(String userId) async {
     try {
       final now = DateTime.now();
-      final query = await _service.collection('user_vouchers')
+      final query = await _service
+          .collection('user_vouchers')
           .where('userId', isEqualTo: userId)
           .where('status', isEqualTo: 'available')
           .get();

@@ -1,18 +1,19 @@
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import '../../../core/utils/safe_change_notifier.dart';
 import '../../../models/support_ticket_model.dart';
 import '../../../models/support_message_model.dart';
 import '../../../repositories/support_repository.dart';
 import '../../../repositories/user_repository.dart';
 
-class SupportController extends ChangeNotifier {
+class SupportController extends SafeChangeNotifier {
   SupportController({SupportRepository? repository})
-      : _repository = repository ?? SupportRepository();
+    : _repository = repository ?? SupportRepository();
 
   final SupportRepository _repository;
-  
+
   List<SupportTicketModel> _tickets = [];
   List<SupportTicketModel> get tickets => _tickets;
 
@@ -51,7 +52,8 @@ class SupportController extends ChangeNotifier {
       message: 'Tôi cần kiểm tra giao dịch thanh toán của đơn hàng.',
       imageUrls: [],
       status: 'replied',
-      lastMessage: 'Đã kiểm tra giao dịch. Khoản thanh toán dư sẽ được hoàn trong 1-3 ngày làm việc.',
+      lastMessage:
+          'Đã kiểm tra giao dịch. Khoản thanh toán dư sẽ được hoàn trong 1-3 ngày làm việc.',
       lastMessageAt: DateTime.now().subtract(const Duration(hours: 2)),
       unreadByUser: true,
       unreadByAdmin: false,
@@ -75,7 +77,7 @@ class SupportController extends ChangeNotifier {
       unreadByAdmin: false,
       createdAt: DateTime.now().subtract(const Duration(days: 9)),
       updatedAt: DateTime.now().subtract(const Duration(days: 3)),
-    )
+    ),
   ];
 
   static final Map<String, List<SupportMessageModel>> _demoMessages = {
@@ -97,7 +99,8 @@ class SupportController extends ChangeNotifier {
         senderId: 'admin-uid',
         senderName: 'Hỗ trợ viên',
         senderRole: 'admin',
-        message: 'Đã kiểm tra giao dịch. Khoản thanh toán dư sẽ được hoàn trong 1-3 ngày làm việc.',
+        message:
+            'Đã kiểm tra giao dịch. Khoản thanh toán dư sẽ được hoàn trong 1-3 ngày làm việc.',
         imageUrls: [],
         isRead: false,
         createdAt: DateTime.now().subtract(const Duration(hours: 2)),
@@ -126,13 +129,13 @@ class SupportController extends ChangeNotifier {
         isRead: true,
         createdAt: DateTime.now().subtract(const Duration(days: 3)),
       ),
-    ]
+    ],
   };
 
   void startWatchingTickets() {
     final hasFirebase = Firebase.apps.isNotEmpty;
     final user = hasFirebase ? FirebaseAuth.instance.currentUser : null;
-    
+
     if (!hasFirebase || user == null) {
       // Mock mode
       _tickets = List.from(_demoTickets);
@@ -145,18 +148,20 @@ class SupportController extends ChangeNotifier {
     notifyListeners();
 
     _ticketsSubscription?.cancel();
-    _ticketsSubscription = _repository.watchUserTickets(user.uid).listen(
-      (list) {
-        _tickets = list;
-        _loadingTickets = false;
-        notifyListeners();
-      },
-      onError: (e) {
-        debugPrint('Error loading support tickets: $e');
-        _loadingTickets = false;
-        notifyListeners();
-      },
-    );
+    _ticketsSubscription = _repository
+        .watchUserTickets(user.uid)
+        .listen(
+          (list) {
+            _tickets = list;
+            _loadingTickets = false;
+            notifyListeners();
+          },
+          onError: (e) {
+            debugPrint('Error loading support tickets: $e');
+            _loadingTickets = false;
+            notifyListeners();
+          },
+        );
   }
 
   void stopWatchingTickets() {
@@ -176,7 +181,7 @@ class SupportController extends ChangeNotifier {
       _activeTicket = idx != -1 ? _demoTickets[idx] : null;
       _loadingMessages = false;
       notifyListeners();
-      
+
       // Mark as read in mock mode
       if (idx != -1) {
         _demoTickets[idx] = _demoTickets[idx].copyWith(unreadByUser: false);
@@ -188,30 +193,34 @@ class SupportController extends ChangeNotifier {
     notifyListeners();
 
     _activeTicketSubscription?.cancel();
-    _activeTicketSubscription = _repository.watchTicket(ticketId).listen(
-      (ticket) {
-        _activeTicket = ticket;
-        notifyListeners();
-      },
-      onError: (e) {
-        debugPrint('Error loading active ticket: $e');
-      },
-    );
+    _activeTicketSubscription = _repository
+        .watchTicket(ticketId)
+        .listen(
+          (ticket) {
+            _activeTicket = ticket;
+            notifyListeners();
+          },
+          onError: (e) {
+            debugPrint('Error loading active ticket: $e');
+          },
+        );
 
     _messagesSubscription?.cancel();
-    _messagesSubscription = _repository.watchTicketMessages(ticketId).listen(
-      (list) {
-        _messages = list;
-        _loadingMessages = false;
-        notifyListeners();
-      },
-      onError: (e) {
-        debugPrint('Error loading ticket messages: $e');
-        _loadingMessages = false;
-        _hasMessagesError = true;
-        notifyListeners();
-      },
-    );
+    _messagesSubscription = _repository
+        .watchTicketMessages(ticketId)
+        .listen(
+          (list) {
+            _messages = list;
+            _loadingMessages = false;
+            notifyListeners();
+          },
+          onError: (e) {
+            debugPrint('Error loading ticket messages: $e');
+            _loadingMessages = false;
+            _hasMessagesError = true;
+            notifyListeners();
+          },
+        );
 
     // Also mark as read in Firestore
     markAsRead(ticketId);
@@ -239,7 +248,8 @@ class SupportController extends ChangeNotifier {
     if (!hasFirebase || user == null) {
       // Mock mode
       await Future.delayed(const Duration(milliseconds: 300));
-      final ticketId = 'SPT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+      final ticketId =
+          'SPT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
       final newTicket = SupportTicketModel(
         id: ticketId,
         userId: 'demo-uid',
@@ -250,7 +260,7 @@ class SupportController extends ChangeNotifier {
         title: title,
         message: message,
         imageUrls: imageUrls,
-        status: 'pending',
+        status: 'processing',
         lastMessage: message,
         lastMessageAt: DateTime.now(),
         unreadByUser: false,
@@ -271,7 +281,7 @@ class SupportController extends ChangeNotifier {
           imageUrls: imageUrls,
           isRead: true,
           createdAt: DateTime.now(),
-        )
+        ),
       ];
 
       _tickets = List.from(_demoTickets);
@@ -282,7 +292,7 @@ class SupportController extends ChangeNotifier {
 
     try {
       final ticketId = 'ST-${DateTime.now().millisecondsSinceEpoch}';
-      
+
       // Fetch user profile info
       final profile = await UserRepository().getUser(user.uid);
       final fullName = profile?.fullName ?? user.displayName ?? 'Người dùng';
@@ -299,7 +309,7 @@ class SupportController extends ChangeNotifier {
         title: title,
         message: message,
         imageUrls: imageUrls,
-        status: 'pending',
+        status: 'processing',
         lastMessage: message,
         lastMessageAt: DateTime.now(),
         unreadByUser: false,
@@ -320,7 +330,11 @@ class SupportController extends ChangeNotifier {
     }
   }
 
-  Future<bool> sendChatMessage(String ticketId, String messageText, {List<String> imageUrls = const []}) async {
+  Future<bool> sendChatMessage(
+    String ticketId,
+    String messageText, {
+    List<String> imageUrls = const [],
+  }) async {
     final hasFirebase = Firebase.apps.isNotEmpty;
     final user = hasFirebase ? FirebaseAuth.instance.currentUser : null;
 
@@ -338,13 +352,13 @@ class SupportController extends ChangeNotifier {
         isRead: false,
         createdAt: DateTime.now(),
       );
-      
+
       if (!_demoMessages.containsKey(ticketId)) {
         _demoMessages[ticketId] = [];
       }
       _demoMessages[ticketId]!.add(message);
       _messages = List.from(_demoMessages[ticketId]!);
-      
+
       final idx = _demoTickets.indexWhere((t) => t.id == ticketId);
       if (idx != -1) {
         final ticket = _demoTickets[idx];
@@ -384,7 +398,7 @@ class SupportController extends ChangeNotifier {
   Future<void> markAsRead(String ticketId) async {
     final hasFirebase = Firebase.apps.isNotEmpty;
     final user = hasFirebase ? FirebaseAuth.instance.currentUser : null;
-    
+
     if (!hasFirebase || user == null) {
       final idx = _demoTickets.indexWhere((t) => t.id == ticketId);
       if (idx != -1) {

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/navigation/app_navigator.dart';
+import '../order_tracking/order_tracking_screen.dart';
 import '../qr_pickup/order_model.dart' as pickup;
-import '../qr_pickup/qr_pickup_screen.dart';
 import '../smart_canteen_home_screen.dart';
 import 'payment_model.dart';
 import 'widgets/payment_success_widgets.dart';
@@ -26,11 +26,10 @@ class PaymentSuccessScreen extends StatelessWidget {
   final String firestoreOrderId;
   final DateTime paidAt;
 
-  void _openPickupQr(BuildContext context) {
+  void _openTracking(BuildContext context) {
     AppNavigator.push<void>(
       context,
-      builder: (_) =>
-          QRPickupScreen(orderId: firestoreOrderId, previewOrder: pickupOrder),
+      builder: (_) => OrderTrackingScreen(orderId: firestoreOrderId),
     );
   }
 
@@ -81,7 +80,7 @@ class PaymentSuccessScreen extends StatelessWidget {
                       PickupInfoCard(order: pickupOrder),
                       const SizedBox(height: 18),
                       SuccessActionButtons(
-                        onPickupQr: () => _openPickupQr(context),
+                        onTrackOrder: () => _openTracking(context),
                         onHome: () => _goHome(context),
                       ),
                     ],

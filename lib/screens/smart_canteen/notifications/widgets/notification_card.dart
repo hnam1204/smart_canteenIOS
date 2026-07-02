@@ -243,6 +243,9 @@ extension on NotificationType {
         return Icons.campaign_rounded;
       case NotificationType.promotion:
         return Icons.local_offer_rounded;
+      case NotificationType.orderReady:
+      case NotificationType.orderReadyReminder:
+        return Icons.restaurant_menu_rounded;
     }
   }
 }
@@ -307,6 +310,13 @@ class _NotificationPalette {
           accent: AppColors.primary,
           iconBackground: AppColors.primarySoft,
           surface: Color(0xFFFFFAF7),
+        );
+      case NotificationType.orderReady:
+      case NotificationType.orderReadyReminder:
+        return const _NotificationPalette(
+          accent: Color(0xFFFF6B00),
+          iconBackground: Color(0xFFFFEAE0),
+          surface: Color(0xFFFFF9F5),
         );
     }
   }

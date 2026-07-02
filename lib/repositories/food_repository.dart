@@ -1,3 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+
+import '../core/utils/perf_logger.dart';
 import '../firebase/firestore_service.dart';
 import '../models/firestore_models.dart';
 
@@ -52,31 +56,45 @@ class FoodRepository {
   }
 
   Future<List<FoodModel>> _fetchFoods() async {
-    List<FoodModel> foods;
-    try {
-      final query = _service
-          .collection('foods')
-          .where('isAvailable', isEqualTo: true)
-          .orderBy('soldCount', descending: true);
-      final snapshot = await query.get();
-      foods = snapshot.docs
-          .map(FoodModel.fromFirestore)
-          .toList(growable: false);
-    } catch (_) {
-      final fallbackQuery = _service
-          .collection('foods')
-          .where('isAvailable', isEqualTo: true);
-      final snapshot = await fallbackQuery.get();
-      foods = snapshot.docs.map(FoodModel.fromFirestore).toList(growable: false)
-        ..sort((left, right) {
-          final soldCompare = right.soldCount.compareTo(left.soldCount);
-          if (soldCompare != 0) return soldCompare;
-          return right.rating.compareTo(left.rating);
-        });
-    }
+    final foods = await traceAsync('loadFoods', () async {
+      try {
+        final query = _service
+            .collection('foods')
+            .where('isAvailable', isEqualTo: true)
+            .orderBy('soldCount', descending: true)
+            .limit(50);
+        final snapshot = await query.get();
+        return snapshot.docs
+            .map(FoodModel.fromFirestore)
+            .toList(growable: false);
+      } on FirebaseException catch (error) {
+        if (!_isMissingIndex(error)) rethrow;
+        debugPrint('Missing index for foods query, using client sort: $error');
+        final fallbackQuery = _service
+            .collection('foods')
+            .where('isAvailable', isEqualTo: true)
+            .limit(50);
+        final snapshot = await fallbackQuery.get();
+        return snapshot.docs
+            .map(FoodModel.fromFirestore)
+            .toList(growable: false)
+          ..sort(_sortByPopularity);
+      }
+    });
     _cache = foods;
     _lastSyncAt = DateTime.now();
     return foods;
+  }
+
+  int _sortByPopularity(FoodModel left, FoodModel right) {
+    final soldCompare = right.soldCount.compareTo(left.soldCount);
+    if (soldCompare != 0) return soldCompare;
+    return right.rating.compareTo(left.rating);
+  }
+
+  bool _isMissingIndex(FirebaseException error) {
+    final message = error.message?.toLowerCase() ?? '';
+    return error.code == 'failed-precondition' || message.contains('index');
   }
 
   List<FoodModel> _filterByCategory(List<FoodModel> foods, String? categoryId) {

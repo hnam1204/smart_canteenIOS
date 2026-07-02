@@ -2,15 +2,16 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
+
+import '../../../core/utils/safe_change_notifier.dart';
 import '../../../models/firestore_models.dart' as store;
 import '../../../repositories/order_repository.dart';
 import 'order_model.dart';
 
 enum PreparingFilter { all, cooking, packing, almostReady, ready }
 
-class PreparingOrdersController extends ChangeNotifier {
+class PreparingOrdersController extends SafeChangeNotifier {
   PreparingOrdersController({OrderRepository? repository})
     : _repository = repository,
       _orders = List.of(demoPreparingOrders);

@@ -1,9 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 
+
+import '../../core/utils/safe_change_notifier.dart';
 import '../../firebase/firebase_service.dart';
 
-class RegisterController extends ChangeNotifier {
+class RegisterController extends SafeChangeNotifier {
   RegisterController({FirebaseService? service})
     : _service = service ?? FirebaseService();
 

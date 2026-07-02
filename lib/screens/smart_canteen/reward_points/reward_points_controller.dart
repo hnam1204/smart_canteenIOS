@@ -9,11 +9,12 @@ import '../../../models/firestore_models.dart' as store;
 import '../../../repositories/reward_repository.dart';
 import '../../../repositories/user_repository.dart';
 import '../../../repositories/voucher_repository.dart';
+import '../../../core/utils/safe_change_notifier.dart';
 import 'reward_model.dart';
 import '../vouchers/my_vouchers_screen.dart';
 import 'widgets/reward_exchange_widgets.dart';
 
-class RewardPointsController extends ChangeNotifier {
+class RewardPointsController extends SafeChangeNotifier {
   RewardPointsController({
     UserRepository? userRepo,
     VoucherRepository? voucherRepo,

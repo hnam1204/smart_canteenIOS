@@ -249,6 +249,7 @@ class _SmartCanteenHomeScreenState extends State<SmartCanteenHomeScreen> {
         stream: firestore
             .collection('vouchers')
             .where('isActive', isEqualTo: true)
+            .limit(10)
             .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
@@ -282,6 +283,7 @@ class _SmartCanteenHomeScreenState extends State<SmartCanteenHomeScreen> {
       stream: firestore
           .collection('vouchers')
           .where('isActive', isEqualTo: true)
+          .limit(10)
           .snapshots(),
       builder: (context, vouchersSnapshot) {
         if (!vouchersSnapshot.hasData || vouchersSnapshot.data!.docs.isEmpty) {
@@ -326,23 +328,22 @@ class _SmartCanteenHomeScreenState extends State<SmartCanteenHomeScreen> {
                 _DiscountCard(
                   voucher: targetVoucher,
                   onClaimTap: () async {
-                    final result = await VoucherRepository().claimVoucher(user.uid, targetVoucher.id);
-                    if (context.mounted) {
-                      if (result.isSuccess) {
-                        showAppSnackBar(
-                          context,
-                          'Đã lưu mã ưu đãi',
-                          icon: Icons.check_circle_outline_rounded,
-                          iconColor: AppColors.success,
-                        );
-                      } else {
-                        showAppSnackBar(
-                          context,
-                          result.error ?? 'Đã xảy ra lỗi khi nhận voucher.',
-                          icon: Icons.error_outline_rounded,
-                          iconColor: AppColors.error,
-                        );
-                      }
+                                        final result = await VoucherRepository().claimVoucher(user.uid, targetVoucher.id);
+                    if (!context.mounted) return;
+                    if (result.isSuccess) {
+                      showAppSnackBar(
+                        context,
+                        'Đã lưu mã ưu đãi',
+                        icon: Icons.check_circle_outline_rounded,
+                        iconColor: AppColors.success,
+                      );
+                    } else {
+                      showAppSnackBar(
+                        context,
+                        result.error ?? 'Đã xảy ra lỗi khi nhận voucher.',
+                        icon: Icons.error_outline_rounded,
+                        iconColor: AppColors.error,
+                      );
                     }
                   },
                 ),

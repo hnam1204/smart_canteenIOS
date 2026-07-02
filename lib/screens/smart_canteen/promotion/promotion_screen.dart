@@ -2,6 +2,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/colors.dart';
+import '../../../core/widgets/app_food_image.dart';
+
+String _stringFrom(Map<String, dynamic> data, List<String> keys) {
+  for (final key in keys) {
+    final value = data[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
 
 class PromotionScreen extends StatelessWidget {
   const PromotionScreen({super.key});
@@ -23,7 +32,9 @@ class PromotionScreen extends StatelessWidget {
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            );
           }
           final docs = snapshot.data?.docs ?? [];
           if (docs.isEmpty) {
@@ -31,11 +42,18 @@ class PromotionScreen extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.campaign_outlined, size: 56, color: AppColors.textTertiary),
+                  Icon(
+                    Icons.campaign_outlined,
+                    size: 56,
+                    color: AppColors.textTertiary,
+                  ),
                   SizedBox(height: 14),
                   Text(
                     'Chưa có chương trình khuyến mãi nào.',
-                    style: TextStyle(color: AppColors.textSecondary, fontSize: 15),
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 15,
+                    ),
                   ),
                 ],
               ),
@@ -50,7 +68,15 @@ class PromotionScreen extends StatelessWidget {
               final title = (data['title'] ?? '') as String;
               final subtitle = (data['subtitle'] ?? '') as String;
               final description = (data['description'] ?? '') as String;
-              final imageUrl = (data['imageUrl'] ?? '') as String;
+              final imageUrl = _stringFrom(data, const [
+                'imageUrl',
+                'image',
+                'photoUrl',
+                'thumbnail',
+                'thumbnailUrl',
+                'image_url',
+                'photo_url',
+              ]);
               final discountText = (data['discountText'] ?? '') as String;
 
               return Container(
@@ -67,15 +93,9 @@ class PromotionScreen extends StatelessWidget {
                     if (imageUrl.isNotEmpty)
                       AspectRatio(
                         aspectRatio: 16 / 9,
-                        child: Image.network(
-                          imageUrl,
+                        child: AppFoodImage(
+                          source: imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Container(
-                            color: AppColors.primarySoft,
-                            child: const Center(
-                              child: Icon(Icons.image_outlined, size: 40, color: AppColors.primary),
-                            ),
-                          ),
                         ),
                       ),
                     Padding(
@@ -86,9 +106,14 @@ class PromotionScreen extends StatelessWidget {
                           if (discountText.isNotEmpty)
                             Container(
                               margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.12),
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.12,
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
@@ -112,7 +137,10 @@ class PromotionScreen extends StatelessWidget {
                             const SizedBox(height: 4),
                             Text(
                               subtitle,
-                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13.5),
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13.5,
+                              ),
                             ),
                           ],
                           if (description.isNotEmpty) ...[

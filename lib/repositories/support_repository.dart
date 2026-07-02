@@ -1,13 +1,13 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../core/utils/perf_logger.dart';
 import '../models/support_ticket_model.dart';
 import '../models/support_message_model.dart';
 
 class SupportRepository {
   final FirebaseFirestore? _firestore;
 
-  SupportRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore;
+  SupportRepository({FirebaseFirestore? firestore}) : _firestore = firestore;
 
   FirebaseFirestore get _db => _firestore ?? FirebaseFirestore.instance;
 
@@ -15,14 +15,18 @@ class SupportRepository {
     if (Firebase.apps.isEmpty) {
       return Stream.value(const <SupportTicketModel>[]);
     }
-    return _db
-        .collection('support_tickets')
-        .where('userId', isEqualTo: userId)
-        .orderBy('updatedAt', descending: true)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => SupportTicketModel.fromFirestore(doc))
-            .toList());
+    final query = traceSync('loadSupportTickets.stream', () {
+      return _db
+          .collection('support_tickets')
+          .where('userId', isEqualTo: userId)
+          .orderBy('updatedAt', descending: true)
+          .limit(20);
+    });
+    return query.snapshots().map(
+      (snapshot) => snapshot.docs
+          .map((doc) => SupportTicketModel.fromFirestore(doc))
+          .toList(),
+    );
   }
 
   Stream<SupportTicketModel?> watchTicket(String ticketId) {
@@ -33,7 +37,9 @@ class SupportRepository {
         .collection('support_tickets')
         .doc(ticketId)
         .snapshots()
-        .map((doc) => doc.exists ? SupportTicketModel.fromFirestore(doc) : null);
+        .map(
+          (doc) => doc.exists ? SupportTicketModel.fromFirestore(doc) : null,
+        );
   }
 
   Stream<List<SupportMessageModel>> watchTicketMessages(String ticketId) {
@@ -46,14 +52,19 @@ class SupportRepository {
         .collection('messages')
         .orderBy('createdAt', descending: false)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => SupportMessageModel.fromFirestore(doc))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => SupportMessageModel.fromFirestore(doc))
+              .toList(),
+        );
   }
 
-  Future<void> createTicket(SupportTicketModel ticket, String messageText) async {
+  Future<void> createTicket(
+    SupportTicketModel ticket,
+    String messageText,
+  ) async {
     final batch = _db.batch();
-    
+
     final ticketRef = _db.collection('support_tickets').doc(ticket.id);
     batch.set(ticketRef, {
       ...ticket.toFirestore(),
@@ -61,7 +72,7 @@ class SupportRepository {
       'updatedAt': FieldValue.serverTimestamp(),
       'lastMessageAt': FieldValue.serverTimestamp(),
     });
-    
+
     final messageRef = ticketRef.collection('messages').doc();
     final firstMessage = SupportMessageModel(
       id: messageRef.id,
@@ -78,7 +89,7 @@ class SupportRepository {
       ...firstMessage.toFirestore(),
       'createdAt': FieldValue.serverTimestamp(),
     });
-    
+
     final logRef = _db.collection('activity_logs').doc();
     batch.set(logRef, {
       'id': logRef.id,
@@ -88,7 +99,7 @@ class SupportRepository {
       'description': 'Mã yêu cầu: ${ticket.id}',
       'createdAt': FieldValue.serverTimestamp(),
     });
-    
+
     await batch.commit();
   }
 
@@ -100,7 +111,7 @@ class SupportRepository {
     List<String> imageUrls = const [],
   }) async {
     final ticketRef = _db.collection('support_tickets').doc(ticketId);
-    
+
     await _db.runTransaction((transaction) async {
       final ticketSnap = await transaction.get(ticketRef);
       if (!ticketSnap.exists) {
@@ -110,21 +121,25 @@ class SupportRepository {
       if (ticket.status == 'closed') {
         throw Exception('Yêu cầu hỗ trợ đã đóng, không thể gửi tin nhắn.');
       }
-      
+
       final messageRef = ticketRef.collection('messages').doc();
-      
+
       transaction.set(messageRef, {
         'id': messageRef.id,
         'ticketId': ticketId,
         'senderId': senderId,
         'senderName': senderName,
         'senderRole': 'user',
+        'senderType': 'user',
         'message': messageText,
+        'text': messageText,
         'imageUrls': imageUrls,
         'isRead': false,
+        'readByAdmin': false,
+        'readByUser': true,
         'createdAt': FieldValue.serverTimestamp(),
       });
-      
+
       transaction.update(ticketRef, {
         'lastMessage': messageText,
         'lastMessageAt': FieldValue.serverTimestamp(),
@@ -137,17 +152,17 @@ class SupportRepository {
 
   Future<void> markTicketAsRead(String ticketId) async {
     final ticketRef = _db.collection('support_tickets').doc(ticketId);
-    
+
     // Update ticket document unread status
     await ticketRef.update({'unreadByUser': false});
-    
+
     // Find and update all unread messages from admin to isRead = true
     final unreadMessages = await ticketRef
         .collection('messages')
         .where('senderRole', isEqualTo: 'admin')
         .where('isRead', isEqualTo: false)
         .get();
-        
+
     if (unreadMessages.docs.isNotEmpty) {
       final batch = _db.batch();
       for (final doc in unreadMessages.docs) {

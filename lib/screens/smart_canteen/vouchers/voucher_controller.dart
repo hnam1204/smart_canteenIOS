@@ -6,13 +6,16 @@ import 'package:flutter/material.dart';
 
 import '../../../models/firestore_models.dart' as store;
 import '../../../repositories/voucher_repository.dart';
+import '../../../core/utils/safe_change_notifier.dart';
 import '../reward_points/reward_model.dart';
 import 'voucher_model.dart';
 
-class VoucherController extends ChangeNotifier {
+class VoucherController extends SafeChangeNotifier {
   VoucherController({this.receivedReward, VoucherRepository? repository})
     : _repository = repository,
-      _filter = receivedReward != null ? VoucherFilter.mine : VoucherFilter.claimable;
+      _filter = receivedReward != null
+          ? VoucherFilter.mine
+          : VoucherFilter.claimable;
 
   final RewardItemModel? receivedReward;
   VoucherRepository? _repository;
@@ -75,48 +78,16 @@ class VoucherController extends ChangeNotifier {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final uid = user.uid;
-        
+
         unawaited(_repository!.checkAndExpireUserVouchers(uid));
 
         _vouchersSubscription?.cancel();
-        _vouchersSubscription = _repository!.watchVouchers().listen(
-          (vouchers) {
-            _rawVouchers = vouchers;
-            _updateCombinedList(uid);
-          },
-          onError: (_) {
-            _loading = false;
-            _hasError = true;
-            _notify();
-          },
-        );
-
         _userVouchersSubscription?.cancel();
-        _userVouchersSubscription = _repository!.watchUserVouchers(uid).listen(
-          (userVouchers) {
-            _rawUserVouchers = userVouchers;
-            _updateCombinedList(uid);
-          },
-          onError: (_) {
-            _loading = false;
-            _hasError = true;
-            _notify();
-          },
-        );
+        unawaited(_loadRemoteVouchers(uid));
       } else {
         _vouchersSubscription?.cancel();
-        _vouchersSubscription = _repository!.watchVouchers().listen(
-          (vouchers) {
-            _rawVouchers = vouchers;
-            _rawUserVouchers = const [];
-            _updateCombinedList('');
-          },
-          onError: (_) {
-            _loading = false;
-            _hasError = true;
-            _notify();
-          },
-        );
+        _userVouchersSubscription?.cancel();
+        unawaited(_loadRemoteVouchers(''));
       }
       return;
     }
@@ -129,7 +100,9 @@ class VoucherController extends ChangeNotifier {
       if (_filter == VoucherFilter.claimable) {
         return v.id == 'voucher_featured' || v.id == 'voucher_freeship';
       } else if (_filter == VoucherFilter.mine) {
-        return v.status == VoucherStatus.available || v.status == VoucherStatus.expiringSoon || v.id == 'reward_received';
+        return v.status == VoucherStatus.available ||
+            v.status == VoucherStatus.expiringSoon ||
+            v.id == 'reward_received';
       } else if (_filter == VoucherFilter.used) {
         return v.status == VoucherStatus.used;
       } else if (_filter == VoucherFilter.expired) {
@@ -142,17 +115,39 @@ class VoucherController extends ChangeNotifier {
     _notify();
   }
 
+  Future<void> _loadRemoteVouchers(String uid) async {
+    try {
+      _rawVouchers = await _repository!.loadVouchers(forceRefresh: _refreshing);
+      _rawUserVouchers = uid.isEmpty
+          ? const []
+          : await _repository!.loadUserVouchers(uid, forceRefresh: _refreshing);
+      _updateCombinedList(uid);
+    } catch (_) {
+      _loading = false;
+      _refreshing = false;
+      _hasError = true;
+      _notify();
+    }
+  }
+
   void _updateCombinedList(String userId) {
     if (_disposed) return;
     final now = DateTime.now();
     final List<VoucherModel> combined = [];
 
-    final claimedIds = _rawUserVouchers.map((uv) => uv.voucherId).where((id) => id.isNotEmpty).toSet();
-    final claimedCodes = _rawUserVouchers.map((uv) => uv.voucherCode).where((code) => code.isNotEmpty).toSet();
+    final claimedIds = _rawUserVouchers
+        .map((uv) => uv.voucherId)
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final claimedCodes = _rawUserVouchers
+        .map((uv) => uv.voucherCode)
+        .where((code) => code.isNotEmpty)
+        .toSet();
 
     if (_filter == VoucherFilter.claimable) {
       final claimableVouchers = _rawVouchers.where((v) {
-        final isClaimed = claimedIds.contains(v.id) || claimedCodes.contains(v.code);
+        final isClaimed =
+            claimedIds.contains(v.id) || claimedCodes.contains(v.code);
         final isExpired = v.expiredAt.isBefore(now);
         return v.isActive && !isClaimed && !isExpired;
       });
@@ -160,29 +155,25 @@ class VoucherController extends ChangeNotifier {
     } else if (_filter == VoucherFilter.mine) {
       final mineVouchers = _rawUserVouchers.where((uv) {
         final isExpired = uv.expiredAt.isBefore(now);
-        return (uv.status == 'active' || uv.status == 'available') && !isExpired;
+        return (uv.status == 'active' || uv.status == 'available') &&
+            !isExpired;
       });
       combined.addAll(
-        mineVouchers
-            .map(_mergeUserVoucher)
-            .whereType<VoucherModel>(),
+        mineVouchers.map(_mergeUserVoucher).whereType<VoucherModel>(),
       );
     } else if (_filter == VoucherFilter.used) {
       final usedVouchers = _rawUserVouchers.where((uv) => uv.status == 'used');
       combined.addAll(
-        usedVouchers
-            .map(_mergeUserVoucher)
-            .whereType<VoucherModel>(),
+        usedVouchers.map(_mergeUserVoucher).whereType<VoucherModel>(),
       );
     } else if (_filter == VoucherFilter.expired) {
       final expiredVouchers = _rawUserVouchers.where((uv) {
         final isExpired = uv.expiredAt.isBefore(now);
-        return uv.status == 'expired' || ((uv.status == 'active' || uv.status == 'available') && isExpired);
+        return uv.status == 'expired' ||
+            ((uv.status == 'active' || uv.status == 'available') && isExpired);
       });
       combined.addAll(
-        expiredVouchers
-            .map(_mergeUserVoucher)
-            .whereType<VoucherModel>(),
+        expiredVouchers.map(_mergeUserVoucher).whereType<VoucherModel>(),
       );
     }
 
@@ -204,12 +195,14 @@ class VoucherController extends ChangeNotifier {
       final result = await _repository!.claimVoucher(user.uid, voucherId);
       if (!context.mounted) return;
       if (result.isSuccess) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã lưu mã ưu đãi')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Đã lưu mã ưu đãi')));
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.error ?? 'Đã xảy ra lỗi khi nhận voucher.')),
+          SnackBar(
+            content: Text(result.error ?? 'Đã xảy ra lỗi khi nhận voucher.'),
+          ),
         );
       }
     } catch (e, stack) {
@@ -266,7 +259,9 @@ class VoucherController extends ChangeNotifier {
         if (filter == VoucherFilter.claimable) {
           return v.id == 'voucher_featured' || v.id == 'voucher_freeship';
         } else if (filter == VoucherFilter.mine) {
-          return v.status == VoucherStatus.available || v.status == VoucherStatus.expiringSoon || v.id == 'reward_received';
+          return v.status == VoucherStatus.available ||
+              v.status == VoucherStatus.expiringSoon ||
+              v.id == 'reward_received';
         } else if (filter == VoucherFilter.used) {
           return v.status == VoucherStatus.used;
         } else if (filter == VoucherFilter.expired) {
@@ -276,31 +271,55 @@ class VoucherController extends ChangeNotifier {
       }).length;
     }
     final now = DateTime.now();
-    final claimedIds = _rawUserVouchers.map((uv) => uv.voucherId).where((id) => id.isNotEmpty).toSet();
-    final claimedCodes = _rawUserVouchers.map((uv) => uv.voucherCode).where((code) => code.isNotEmpty).toSet();
+    final claimedIds = _rawUserVouchers
+        .map((uv) => uv.voucherId)
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final claimedCodes = _rawUserVouchers
+        .map((uv) => uv.voucherCode)
+        .where((code) => code.isNotEmpty)
+        .toSet();
 
     if (filter == VoucherFilter.claimable) {
       return _rawVouchers.where((v) {
-        final isClaimed = claimedIds.contains(v.id) || claimedCodes.contains(v.code);
+        final isClaimed =
+            claimedIds.contains(v.id) || claimedCodes.contains(v.code);
         final isExpired = v.expiredAt.isBefore(now);
         return v.isActive && !isClaimed && !isExpired;
       }).length;
     } else if (filter == VoucherFilter.mine) {
       return _rawUserVouchers.where((uv) {
         final isExpired = uv.expiredAt.isBefore(now);
-        final hasValidVoucher = _rawVouchers.any((v) => v.id == uv.voucherId || (v.code == uv.voucherCode && uv.voucherCode.isNotEmpty));
-        return (uv.status == 'active' || uv.status == 'available') && !isExpired && hasValidVoucher;
+        final hasValidVoucher = _rawVouchers.any(
+          (v) =>
+              v.id == uv.voucherId ||
+              (v.code == uv.voucherCode && uv.voucherCode.isNotEmpty),
+        );
+        return (uv.status == 'active' || uv.status == 'available') &&
+            !isExpired &&
+            hasValidVoucher;
       }).length;
     } else if (filter == VoucherFilter.used) {
       return _rawUserVouchers.where((uv) {
-        final hasValidVoucher = _rawVouchers.any((v) => v.id == uv.voucherId || (v.code == uv.voucherCode && uv.voucherCode.isNotEmpty));
+        final hasValidVoucher = _rawVouchers.any(
+          (v) =>
+              v.id == uv.voucherId ||
+              (v.code == uv.voucherCode && uv.voucherCode.isNotEmpty),
+        );
         return uv.status == 'used' && hasValidVoucher;
       }).length;
     } else if (filter == VoucherFilter.expired) {
       return _rawUserVouchers.where((uv) {
         final isExpired = uv.expiredAt.isBefore(now);
-        final hasValidVoucher = _rawVouchers.any((v) => v.id == uv.voucherId || (v.code == uv.voucherCode && uv.voucherCode.isNotEmpty));
-        return (uv.status == 'expired' || ((uv.status == 'active' || uv.status == 'available') && isExpired)) && hasValidVoucher;
+        final hasValidVoucher = _rawVouchers.any(
+          (v) =>
+              v.id == uv.voucherId ||
+              (v.code == uv.voucherCode && uv.voucherCode.isNotEmpty),
+        );
+        return (uv.status == 'expired' ||
+                ((uv.status == 'active' || uv.status == 'available') &&
+                    isExpired)) &&
+            hasValidVoucher;
       }).length;
     }
     return 0;
@@ -336,7 +355,9 @@ class VoucherController extends ChangeNotifier {
       code: voucher.code,
       type: type,
       valueLabel: valueLabel,
-      description: voucher.description.isNotEmpty ? voucher.description : valueLabel,
+      description: voucher.description.isNotEmpty
+          ? voucher.description
+          : valueLabel,
       condition:
           'Đơn tối thiểu ${formatVoucherMoney(voucher.minOrderAmount.toInt())}',
       validFrom: '--',
@@ -405,19 +426,27 @@ class VoucherController extends ChangeNotifier {
     final daySpan = userVoucher.expiredAt.difference(now).inDays;
     return VoucherModel(
       id: userVoucher.id,
-      title: voucher.title.isNotEmpty ? voucher.title : (userVoucher.title.isNotEmpty ? userVoucher.title : 'Ưu đãi'),
+      title: voucher.title.isNotEmpty
+          ? voucher.title
+          : (userVoucher.title.isNotEmpty ? userVoucher.title : 'Ưu đãi'),
       code: voucher.code.isNotEmpty ? voucher.code : userVoucher.voucherCode,
       type: type,
       valueLabel: valueLabel,
       description: voucher.description.isNotEmpty
           ? voucher.description
-          : (userVoucher.description.isNotEmpty ? userVoucher.description : valueLabel),
+          : (userVoucher.description.isNotEmpty
+                ? userVoucher.description
+                : valueLabel),
       condition:
           'Đơn tối thiểu ${formatVoucherMoney(voucher.minOrderAmount.toInt())}',
       validFrom: _formatDate(userVoucher.claimedAt),
       validUntil: _formatDate(userVoucher.expiredAt),
       applicableFoods: const ['Tất cả món đủ điều kiện'],
-      remainingUses: status == VoucherStatus.available || status == VoucherStatus.expiringSoon ? 1 : 0,
+      remainingUses:
+          status == VoucherStatus.available ||
+              status == VoucherStatus.expiringSoon
+          ? 1
+          : 0,
       status: status,
       icon: type == VoucherType.freeShipping
           ? Icons.delivery_dining_outlined

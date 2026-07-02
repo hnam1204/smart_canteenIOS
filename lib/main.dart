@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,9 +21,12 @@ import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/smart_canteen/main_shell_screen.dart';
+import 'screens/smart_canteen/payment_screen.dart';
+import 'screens/smart_canteen/order_history/order_history_screen.dart';
+import 'screens/smart_canteen/qr_pickup/order_model.dart' as pickup;
+import 'screens/smart_canteen/qr_pickup/qr_pickup_screen.dart';
 import 'screens/smart_canteen/vouchers/my_vouchers_screen.dart';
 import 'screens/smart_canteen/promotion/promotion_screen.dart';
-
 
 bool firebaseAvailable = false;
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
@@ -28,29 +34,53 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await AppConfig.initialize();
-  try {
-    final options = DefaultFirebaseOptions.maybeCurrentPlatform;
-    if (options == null) {
-      throw StateError('Firebase configuration is unavailable on this platform.');
-    }
-    await Firebase.initializeApp(options: options);
-    firebaseAvailable = true;
-    await AppCheckService.activateForRelease();
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    await push.NotificationService.instance.initialize();
-    await push.NotificationService.instance.requestPermission();
-  } on Object catch (error) {
-    firebaseAvailable = false;
-    debugPrint('Firebase unavailable: $error');
-  }
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+  };
 
-  final prefs = await SharedPreferences.getInstance();
-  runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(prefs),
-      child: const SmartCanteenApp(),
-    ),
+  runZonedGuarded(
+    () async {
+      await AppConfig.initialize();
+      try {
+        final options = DefaultFirebaseOptions.maybeCurrentPlatform;
+        if (options == null) {
+          throw StateError(
+            'Firebase configuration is unavailable on this platform.',
+          );
+        }
+        await Firebase.initializeApp(options: options);
+        try {
+          FirebaseFirestore.instance.settings = const Settings(
+            persistenceEnabled: true,
+            cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+          );
+        } on Object catch (error) {
+          debugPrint('Firestore cache settings skipped: $error');
+        }
+        firebaseAvailable = true;
+        await AppCheckService.activateForRelease();
+        FirebaseMessaging.onBackgroundMessage(
+          firebaseMessagingBackgroundHandler,
+        );
+        await push.NotificationService.instance.initialize();
+        await push.NotificationService.instance.requestPermission();
+      } on Object catch (error) {
+        firebaseAvailable = false;
+        debugPrint('Firebase unavailable: $error');
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      runApp(
+        ChangeNotifierProvider(
+          create: (_) => ThemeProvider(prefs),
+          child: const SmartCanteenApp(),
+        ),
+      );
+    },
+    (error, stack) {
+      debugPrint('Uncaught app error: $error');
+      debugPrintStack(stackTrace: stack);
+    },
   );
 }
 
@@ -103,6 +133,45 @@ class SmartCanteenApp extends StatelessWidget {
           case '/menu':
             return AppPageTransition<void>(
               builder: (_) => const MainShellScreen(initialIndex: 1),
+            );
+          case '/cart':
+            return AppPageTransition<void>(
+              builder: (_) => const MainShellScreen(initialIndex: 2),
+            );
+          case '/payment':
+            return AppPageTransition<void>(
+              builder: (_) => const PaymentScreen(),
+            );
+          case '/order-history':
+            return AppPageTransition<void>(
+              builder: (_) => const OrderHistoryScreen(),
+            );
+          case '/qr-pickup':
+            final args = settings.arguments;
+            var orderId = '';
+            pickup.OrderModel? previewOrder;
+            if (args is String) {
+              orderId = args;
+            } else if (args is Map) {
+              final nested = args['data'] is Map ? args['data'] as Map : null;
+              final rawOrderId =
+                  args['orderId'] ??
+                  args['referenceId'] ??
+                  nested?['orderId'] ??
+                  args['orderCode'] ??
+                  nested?['orderCode'];
+              final normalizedOrderId = rawOrderId?.toString().trim() ?? '';
+              if (normalizedOrderId.isNotEmpty) {
+                orderId = normalizedOrderId;
+              }
+              final rawPreviewOrder = args['previewOrder'];
+              if (rawPreviewOrder is pickup.OrderModel) {
+                previewOrder = rawPreviewOrder;
+              }
+            }
+            return AppPageTransition<void>(
+              builder: (_) =>
+                  QRPickupScreen(orderId: orderId, previewOrder: previewOrder),
             );
           case '/vouchers':
             return AppPageTransition<void>(

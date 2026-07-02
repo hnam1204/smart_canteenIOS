@@ -2,15 +2,16 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
+
+import '../../../core/utils/safe_change_notifier.dart';
 import '../../../models/firestore_models.dart' as store;
 import '../../../repositories/order_repository.dart';
 import 'order_model.dart';
 
 enum DeliveredFilter { all, awaitingReview, reviewed }
 
-class DeliveredOrdersController extends ChangeNotifier {
+class DeliveredOrdersController extends SafeChangeNotifier {
   DeliveredOrdersController({OrderRepository? repository})
     : _repository = repository,
       _orders = List.of(demoDeliveredOrders);

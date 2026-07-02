@@ -5,7 +5,7 @@ import '../../../core/constants/colors.dart';
 import '../../../core/navigation/app_navigator.dart';
 import '../../../core/utils/app_feedback.dart';
 import '../order_history/order_history_screen.dart';
-import '../main_shell_screen.dart' show MainShellController, MainShellScreen;
+import '../main_shell_screen.dart' show MainShellScreen;
 import 'order_model.dart';
 import 'qr_pickup_controller.dart';
 import 'widgets/note_card.dart';
@@ -84,19 +84,12 @@ class _QRPickupScreenState extends State<QRPickupScreen> {
 
   void _goToHome() {
     if (!mounted) return;
-    final controller = MainShellController.maybeOf(context);
-    if (controller != null) {
-      // Inside shell: just switch tab
-      controller.jumpToTab(0);
-    } else {
-      // Outside shell (standalone navigation): replace entire stack
-      Navigator.of(context).pushAndRemoveUntil<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => const MainShellScreen(initialIndex: 0),
-        ),
-        (route) => false,
-      );
-    }
+    Navigator.of(context).pushAndRemoveUntil<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const MainShellScreen(initialIndex: 0),
+      ),
+      (route) => false,
+    );
   }
 
   @override

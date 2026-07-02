@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import '../core/utils/perf_logger.dart';
 import '../firebase/firestore_service.dart';
 
 class RewardHistoryFirestoreModel {
@@ -23,7 +24,9 @@ class RewardHistoryFirestoreModel {
   final String status;
   final String? orderId;
 
-  factory RewardHistoryFirestoreModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory RewardHistoryFirestoreModel.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     debugPrint('Reward History Raw: ${doc.data()}');
     final data = doc.data() ?? const {};
     final rawType = (data['type'] ?? data['action'] ?? 'earn').toString();
@@ -38,7 +41,8 @@ class RewardHistoryFirestoreModel {
       _ => 'earn',
     };
 
-    final title = (data['title'] ?? data['reason'] ?? data['description'] ?? '').toString();
+    final title = (data['title'] ?? data['reason'] ?? data['description'] ?? '')
+        .toString();
 
     return RewardHistoryFirestoreModel(
       id: data['id'] ?? doc.id,
@@ -70,25 +74,34 @@ class RewardHistoryFirestoreModel {
 
 class RewardRepository {
   RewardRepository({FirestoreService? service})
-      : _service = service ?? FirestoreService();
+    : _service = service ?? FirestoreService();
 
   final FirestoreService _service;
 
   Stream<List<RewardHistoryFirestoreModel>> watchHistory(String userId) {
     try {
-      return _service.streamCollection(
-        query: _service.collection('reward_histories')
-            .where('userId', isEqualTo: userId)
-            .orderBy('createdAt', descending: true),
-        fromFirestore: RewardHistoryFirestoreModel.fromFirestore,
-      ).handleError((Object error) {
+      final stream = traceSync('loadRewardHistories.stream', () {
+        return _service.streamCollection(
+          query: _service
+              .collection('reward_histories')
+              .where('userId', isEqualTo: userId)
+              .orderBy('createdAt', descending: true)
+              .limit(30),
+          fromFirestore: RewardHistoryFirestoreModel.fromFirestore,
+        );
+      });
+      return stream.handleError((Object error) {
         debugPrint('Reward Error: $error');
         throw error;
       });
     } catch (e, st) {
       debugPrint('Reward Error: $e');
       final cleaned = StackTrace.fromString(
-        st.toString().split('\n').where((l) => !l.contains('asynchronous gap')).join('\n')
+        st
+            .toString()
+            .split('\n')
+            .where((l) => !l.contains('asynchronous gap'))
+            .join('\n'),
       );
       debugPrintStack(stackTrace: cleaned);
       rethrow;

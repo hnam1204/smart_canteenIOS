@@ -10,17 +10,62 @@ DateTime _date(dynamic value, [DateTime? fallback]) {
   return fallback ?? DateTime(2000);
 }
 
-int _int(dynamic value) => value is num ? value.toInt() : 0;
-double _double(dynamic value) => value is num ? value.toDouble() : 0;
+int _int(dynamic value) {
+  if (value is num) {
+    final doubleValue = value.toDouble();
+    if (!doubleValue.isFinite) return 0;
+    return value.toInt();
+  }
+  if (value is String) {
+    final parsed = num.tryParse(value.trim());
+    return _int(parsed);
+  }
+  return 0;
+}
+
+double _double(dynamic value) {
+  if (value is num) {
+    final doubleValue = value.toDouble();
+    return doubleValue.isFinite ? doubleValue : 0;
+  }
+  if (value is String) {
+    final parsed = num.tryParse(value.trim());
+    return _double(parsed);
+  }
+  return 0;
+}
+
 String _string(dynamic value) => value?.toString() ?? '';
 bool _bool(dynamic value, [bool fallback = false]) =>
     value is bool ? value : fallback;
+String _imageString(Map<String, dynamic> data) {
+  const keys = [
+    'imageUrl',
+    'image',
+    'photoUrl',
+    'thumbnail',
+    'thumbnailUrl',
+    'image_url',
+    'photo_url',
+  ];
+  for (final key in keys) {
+    final value = _string(data[key]).trim();
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
 List<Map<String, dynamic>> _maps(dynamic value) => value is List
     ? value
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .toList()
     : const [];
+
+List<String> _strings(dynamic value) => value is List
+    ? value.map(_string).where((item) => item.isNotEmpty).toList()
+    : const [];
+
 class ToppingModel {
   const ToppingModel({
     required this.id,
@@ -203,7 +248,7 @@ class FoodModel {
       name: _string(data['name']),
       description: _string(data['description']),
       price: _int(data['price']),
-      imageUrl: _string(data['imageUrl']),
+      imageUrl: _imageString(data),
       categoryId: _string(data['categoryId']),
       categoryName: _string(data['categoryName']),
       isAvailable: _bool(data['isAvailable'], true),
@@ -265,7 +310,9 @@ class CategoryModel {
     return CategoryModel(
       id: _string(data['id']).isEmpty ? doc.id : _string(data['id']),
       name: _string(data['name']),
-      icon: _string(data['icon']),
+      icon: _string(data['icon']).trim().isNotEmpty
+          ? _string(data['icon'])
+          : _imageString(data),
       color: _string(data['color']),
       sortOrder: _int(data['sortOrder']),
     );
@@ -324,18 +371,35 @@ class CartItemModel {
 
   factory CartItemModel.fromMap(Map<String, dynamic> data) => CartItemModel(
     foodId: _string(data['foodId']),
-    name: _string(data['name']),
-    imageUrl: _string(data['imageUrl']),
+    name: _string(data['name']).isEmpty
+        ? _string(data['foodName'])
+        : _string(data['name']),
+    imageUrl: _imageString(data),
     basePrice: data.containsKey('basePrice')
         ? _int(data['basePrice'])
         : _int(data['price']),
     quantity: _int(data['quantity']).clamp(1, 999).toInt(),
     note: _string(data['note']),
-    selectedToppings: _maps(
-      data['selectedToppings'],
-    ).map(ToppingModel.fromMap).toList(growable: false),
+    selectedToppings:
+        (_maps(data['selectedToppings']).isNotEmpty
+                ? _maps(data['selectedToppings'])
+                : _maps(data['toppings']))
+            .map(
+              (item) => ToppingModel(
+                id: _string(item['id']).isEmpty
+                    ? _string(item['toppingId'])
+                    : _string(item['id']),
+                name: _string(item['name']).isEmpty
+                    ? _string(item['toppingName'])
+                    : _string(item['name']),
+                price: _int(item['price']),
+              ),
+            )
+            .toList(growable: false),
     toppingTotal: _int(data['toppingTotal']),
-    itemTotal: _int(data['itemTotal']),
+    itemTotal: data.containsKey('itemTotal')
+        ? _int(data['itemTotal'])
+        : _int(data['subtotal']),
   );
 
   Map<String, dynamic> toFirestore() => {
@@ -346,8 +410,19 @@ class CartItemModel {
     'basePrice': basePrice,
     'price': basePrice,
     'quantity': quantity,
+    'subtotal': total,
     'note': note,
     'selectedToppings': selectedToppings.map((item) => item.toMap()).toList(),
+    'toppings': selectedToppings
+        .map(
+          (item) => {
+            'toppingId': item.id,
+            'toppingName': item.name,
+            'price': item.price,
+            'quantity': 1,
+          },
+        )
+        .toList(),
     'toppingTotal': toppingTotal,
     'itemTotal': total,
   };
@@ -420,7 +495,7 @@ class CartModel {
 
   Map<String, dynamic> toFirestore() => {
     'userId': userId,
-    'items': items.map((item) => item.toFirestore()).toList(growable: false),
+    'items': items.map((item) => item.toFirestore()).toList(growable: true),
     'subtotal': subtotal,
     'voucherId': voucherId,
     'voucherCode': voucherCode,
@@ -478,29 +553,58 @@ class OrderItemModel {
 
   factory OrderItemModel.fromMap(Map<String, dynamic> data) => OrderItemModel(
     foodId: _string(data['foodId']),
-    name: _string(data['name']),
-    imageUrl: _string(data['imageUrl']),
+    name: _string(data['name']).isEmpty
+        ? _string(data['foodName'])
+        : _string(data['name']),
+    imageUrl: _imageString(data),
     basePrice: data.containsKey('basePrice')
         ? _int(data['basePrice'])
         : _int(data['price']),
     quantity: _int(data['quantity']).clamp(1, 999).toInt(),
     note: _string(data['note']),
-    selectedToppings: _maps(
-      data['selectedToppings'],
-    ).map(ToppingModel.fromMap).toList(growable: false),
+    selectedToppings:
+        (_maps(data['selectedToppings']).isNotEmpty
+                ? _maps(data['selectedToppings'])
+                : _maps(data['toppings']))
+            .map(
+              (item) => ToppingModel(
+                id: _string(item['id']).isEmpty
+                    ? _string(item['toppingId'])
+                    : _string(item['id']),
+                name: _string(item['name']).isEmpty
+                    ? _string(item['toppingName'])
+                    : _string(item['name']),
+                price: _int(item['price']),
+              ),
+            )
+            .toList(growable: false),
     toppingTotal: _int(data['toppingTotal']),
-    itemTotal: _int(data['itemTotal']),
+    itemTotal: data.containsKey('itemTotal')
+        ? _int(data['itemTotal'])
+        : _int(data['subtotal']),
   );
 
   Map<String, dynamic> toFirestore() => {
     'foodId': foodId,
+    'foodName': name,
     'name': name,
     'imageUrl': imageUrl,
     'basePrice': basePrice,
     'price': basePrice,
     'quantity': quantity,
+    'subtotal': total,
     'note': note,
     'selectedToppings': selectedToppings.map((item) => item.toMap()).toList(),
+    'toppings': selectedToppings
+        .map(
+          (item) => {
+            'toppingId': item.id,
+            'toppingName': item.name,
+            'price': item.price,
+            'quantity': 1,
+          },
+        )
+        .toList(),
     'toppingTotal': toppingTotal,
     'itemTotal': total,
   };
@@ -523,6 +627,19 @@ class OrderModel {
     required this.pickupEnabled,
     this.qrCodeData = '',
     this.pickupToken = '',
+    this.customerName = '',
+    this.customerPhone = '',
+    this.totalItems = 0,
+    this.subtotal = 0,
+    this.deliveryFee = 0,
+    this.voucherDiscount = 0,
+    this.voucherId,
+    this.voucherCode,
+    this.voucherTitle,
+    this.counterId = '',
+    this.counterName = '',
+    this.customerConfirmedTransfer = false,
+    this.paymentReviewStatus = '',
     this.hasReview = false,
     this.reviewId,
     this.reviewedAt,
@@ -543,6 +660,19 @@ class OrderModel {
   final bool pickupEnabled;
   final String qrCodeData;
   final String pickupToken;
+  final String customerName;
+  final String customerPhone;
+  final int totalItems;
+  final int subtotal;
+  final int deliveryFee;
+  final int voucherDiscount;
+  final String? voucherId;
+  final String? voucherCode;
+  final String? voucherTitle;
+  final String counterId;
+  final String counterName;
+  final bool customerConfirmedTransfer;
+  final String paymentReviewStatus;
   final bool hasReview;
   final String? reviewId;
   final DateTime? reviewedAt;
@@ -556,10 +686,14 @@ class OrderModel {
       items: _maps(
         data['items'],
       ).map(OrderItemModel.fromMap).toList(growable: false),
-      totalAmount: _int(data['totalAmount']),
+      totalAmount: data.containsKey('totalAmount')
+          ? _int(data['totalAmount'])
+          : _int(data['amount']),
       paymentMethod: _string(data['paymentMethod']),
       paymentStatus: _string(data['paymentStatus']),
-      orderStatus: _string(data['orderStatus']),
+      orderStatus: _string(data['orderStatus']).isEmpty
+          ? _string(data['status'])
+          : _string(data['orderStatus']),
       pickupCounter: _string(data['pickupCounter']),
       note: _string(data['note']),
       createdAt: _date(data['createdAt']),
@@ -567,6 +701,23 @@ class OrderModel {
       pickupEnabled: _bool(data['pickupEnabled'], true),
       qrCodeData: _string(data['qrCodeData']),
       pickupToken: _string(data['pickupToken']),
+      customerName: _string(data['customerName']),
+      customerPhone: _string(data['customerPhone']),
+      totalItems: _int(data['totalItems']),
+      subtotal: _int(data['subtotal']),
+      deliveryFee: _int(data['deliveryFee']),
+      voucherDiscount: _int(data['voucherDiscount']),
+      voucherId: data['voucherId'] != null ? _string(data['voucherId']) : null,
+      voucherCode: data['voucherCode'] != null
+          ? _string(data['voucherCode'])
+          : null,
+      voucherTitle: data['voucherTitle'] != null
+          ? _string(data['voucherTitle'])
+          : null,
+      counterId: _string(data['counterId']),
+      counterName: _string(data['counterName']),
+      customerConfirmedTransfer: _bool(data['customerConfirmedTransfer']),
+      paymentReviewStatus: _string(data['paymentReviewStatus']),
       hasReview: _bool(data['hasReview'], false),
       reviewId: data['reviewId'] != null ? _string(data['reviewId']) : null,
       reviewedAt: data['reviewedAt'] != null ? _date(data['reviewedAt']) : null,
@@ -577,18 +728,40 @@ class OrderModel {
     'id': id,
     'userId': userId,
     'orderCode': orderCode,
-    'items': items.map((item) => item.toFirestore()).toList(growable: false),
+    'items': items.map((item) => item.toFirestore()).toList(growable: true),
     'totalAmount': totalAmount,
+    'amount': totalAmount,
     'paymentMethod': paymentMethod,
     'paymentStatus': paymentStatus,
     'orderStatus': orderStatus,
+    'status': orderStatus,
     'pickupCounter': pickupCounter,
+    'counterId': counterId,
+    'counterName': counterName,
     'note': note,
+    'customerName': customerName,
+    'customerPhone': customerPhone,
+    'totalItems': totalItems > 0
+        ? totalItems
+        : items.fold<int>(
+            0,
+            (runningTotal, item) => runningTotal + item.quantity,
+          ),
+    'subtotal': subtotal > 0
+        ? subtotal
+        : items.fold<int>(0, (runningTotal, item) => runningTotal + item.total),
+    'deliveryFee': deliveryFee,
+    'voucherDiscount': voucherDiscount,
+    'voucherId': voucherId,
+    'voucherCode': voucherCode,
+    'voucherTitle': voucherTitle,
     'createdAt': Timestamp.fromDate(createdAt),
     'updatedAt': Timestamp.fromDate(updatedAt),
     'pickupEnabled': pickupEnabled,
     'qrCodeData': qrCodeData,
     'pickupToken': pickupToken,
+    'customerConfirmedTransfer': customerConfirmedTransfer,
+    'paymentReviewStatus': paymentReviewStatus,
     'hasReview': hasReview,
     'reviewId': reviewId,
     'reviewedAt': reviewedAt != null ? Timestamp.fromDate(reviewedAt!) : null,
@@ -601,6 +774,8 @@ class OrderModel {
     String? qrCodeData,
     String? pickupToken,
     bool? pickupEnabled,
+    bool? customerConfirmedTransfer,
+    String? paymentReviewStatus,
     bool? hasReview,
     String? reviewId,
     DateTime? reviewedAt,
@@ -620,6 +795,20 @@ class OrderModel {
     pickupEnabled: pickupEnabled ?? this.pickupEnabled,
     qrCodeData: qrCodeData ?? this.qrCodeData,
     pickupToken: pickupToken ?? this.pickupToken,
+    customerName: customerName,
+    customerPhone: customerPhone,
+    totalItems: totalItems,
+    subtotal: subtotal,
+    deliveryFee: deliveryFee,
+    voucherDiscount: voucherDiscount,
+    voucherId: voucherId,
+    voucherCode: voucherCode,
+    voucherTitle: voucherTitle,
+    counterId: counterId,
+    counterName: counterName,
+    customerConfirmedTransfer:
+        customerConfirmedTransfer ?? this.customerConfirmedTransfer,
+    paymentReviewStatus: paymentReviewStatus ?? this.paymentReviewStatus,
     hasReview: hasReview ?? this.hasReview,
     reviewId: reviewId ?? this.reviewId,
     reviewedAt: reviewedAt ?? this.reviewedAt,
@@ -636,6 +825,7 @@ class NotificationModel {
     required this.isRead,
     required this.createdAt,
     this.referenceId = '',
+    this.status = '',
   });
 
   final String id;
@@ -646,6 +836,7 @@ class NotificationModel {
   final bool isRead;
   final DateTime createdAt;
   final String referenceId;
+  final String status;
 
   factory NotificationModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
@@ -660,6 +851,7 @@ class NotificationModel {
       isRead: _bool(data['isRead']),
       createdAt: _date(data['createdAt']),
       referenceId: _string(data['referenceId']),
+      status: _string(data['status']),
     );
   }
 
@@ -672,9 +864,14 @@ class NotificationModel {
     'isRead': isRead,
     'createdAt': Timestamp.fromDate(createdAt),
     'referenceId': referenceId,
+    'status': status,
   };
 
-  NotificationModel copyWith({bool? isRead, String? referenceId}) => NotificationModel(
+  NotificationModel copyWith({
+    bool? isRead,
+    String? referenceId,
+    String? status,
+  }) => NotificationModel(
     id: id,
     userId: userId,
     title: title,
@@ -683,6 +880,7 @@ class NotificationModel {
     isRead: isRead ?? this.isRead,
     createdAt: createdAt,
     referenceId: referenceId ?? this.referenceId,
+    status: status ?? this.status,
   );
 }
 
@@ -786,32 +984,29 @@ class VoucherModel {
     if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
   };
 
-  VoucherModel copyWith({
-    bool? isActive,
-    int? claimedCount,
-    int? usedCount,
-  }) => VoucherModel(
-    id: id,
-    title: title,
-    code: code,
-    description: description,
-    discountType: discountType,
-    discountValue: discountValue,
-    minOrderAmount: minOrderAmount,
-    maxDiscount: maxDiscount,
-    usageLimit: usageLimit,
-    usedCount: usedCount ?? this.usedCount,
-    claimLimit: claimLimit,
-    claimedCount: claimedCount ?? this.claimedCount,
-    userLimit: userLimit,
-    exchangePoints: exchangePoints,
-    isExchangeable: isExchangeable,
-    isClaimable: isClaimable,
-    isActive: isActive ?? this.isActive,
-    startedAt: startedAt,
-    expiredAt: expiredAt,
-    createdAt: createdAt,
-  );
+  VoucherModel copyWith({bool? isActive, int? claimedCount, int? usedCount}) =>
+      VoucherModel(
+        id: id,
+        title: title,
+        code: code,
+        description: description,
+        discountType: discountType,
+        discountValue: discountValue,
+        minOrderAmount: minOrderAmount,
+        maxDiscount: maxDiscount,
+        usageLimit: usageLimit,
+        usedCount: usedCount ?? this.usedCount,
+        claimLimit: claimLimit,
+        claimedCount: claimedCount ?? this.claimedCount,
+        userLimit: userLimit,
+        exchangePoints: exchangePoints,
+        isExchangeable: isExchangeable,
+        isClaimable: isClaimable,
+        isActive: isActive ?? this.isActive,
+        startedAt: startedAt,
+        expiredAt: expiredAt,
+        createdAt: createdAt,
+      );
 }
 
 class UserVoucherModel {
@@ -958,6 +1153,11 @@ class ReviewModel {
     required this.comment,
     required this.tags,
     required this.createdAt,
+    this.updatedAt,
+    this.status = 'active',
+    this.userName = '',
+    this.foodId = '',
+    this.foodName = '',
     this.orderCode = '',
     this.foodIds = const [],
     this.serviceRatings = const {},
@@ -971,6 +1171,11 @@ class ReviewModel {
   final String comment;
   final List<String> tags;
   final DateTime createdAt;
+  final DateTime? updatedAt;
+  final String status;
+  final String userName;
+  final String foodId;
+  final String foodName;
   final String orderCode;
   final List<String> foodIds;
   final Map<String, int> serviceRatings;
@@ -980,9 +1185,9 @@ class ReviewModel {
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final data = doc.data() ?? const {};
-    final rawServiceRatings = data['serviceRatings'] as Map?;
+    final rawServiceRatings = data['serviceRatings'];
     final Map<String, int> mappedServiceRatings = {};
-    if (rawServiceRatings != null) {
+    if (rawServiceRatings is Map) {
       rawServiceRatings.forEach((k, v) {
         mappedServiceRatings[k.toString()] = _int(v).toInt();
       });
@@ -993,17 +1198,19 @@ class ReviewModel {
       orderId: _string(data['orderId']),
       rating: _int(data['rating']).clamp(1, 5).toInt(),
       comment: _string(data['comment']),
-      tags:
-          (data['tags'] as List?)
-              ?.map(_string)
-              .where((item) => item.isNotEmpty)
-              .toList() ??
-          const [],
+      tags: _strings(data['tags']),
       createdAt: _date(data['createdAt']),
+      updatedAt: data['updatedAt'] != null ? _date(data['updatedAt']) : null,
+      status: _string(data['status']).isEmpty
+          ? 'active'
+          : _string(data['status']),
+      userName: _string(data['userName']),
+      foodId: _string(data['foodId']),
+      foodName: _string(data['foodName']),
       orderCode: _string(data['orderCode']),
-      foodIds: (data['foodIds'] as List?)?.map(_string).toList() ?? const [],
+      foodIds: _strings(data['foodIds']),
       serviceRatings: mappedServiceRatings,
-      imageUrls: (data['imageUrls'] as List?)?.map(_string).toList() ?? const [],
+      imageUrls: _strings(data['imageUrls']),
     );
   }
 
@@ -1013,34 +1220,48 @@ class ReviewModel {
     'orderId': orderId,
     'rating': rating,
     'comment': comment,
-    'tags': tags,
+    'tags': tags.toList(growable: true),
     'createdAt': Timestamp.fromDate(createdAt),
+    'updatedAt': Timestamp.fromDate(updatedAt ?? createdAt),
+    'status': status,
+    'userName': userName,
+    'foodId': foodId,
+    'foodName': foodName,
     'orderCode': orderCode,
-    'foodIds': foodIds,
+    'foodIds': foodIds.toList(growable: true),
     'serviceRatings': serviceRatings,
-    'imageUrls': imageUrls,
+    'imageUrls': imageUrls.toList(growable: true),
   };
 
   ReviewModel copyWith({
     int? rating,
     String? comment,
     List<String>? tags,
+    DateTime? updatedAt,
+    String? status,
+    String? userName,
+    String? foodId,
+    String? foodName,
     String? orderCode,
     List<String>? foodIds,
     Map<String, int>? serviceRatings,
     List<String>? imageUrls,
-  }) =>
-      ReviewModel(
-        id: id,
-        userId: userId,
-        orderId: orderId,
-        rating: rating ?? this.rating,
-        comment: comment ?? this.comment,
-        tags: tags ?? this.tags,
-        createdAt: createdAt,
-        orderCode: orderCode ?? this.orderCode,
-        foodIds: foodIds ?? this.foodIds,
-        serviceRatings: serviceRatings ?? this.serviceRatings,
-        imageUrls: imageUrls ?? this.imageUrls,
-      );
+  }) => ReviewModel(
+    id: id,
+    userId: userId,
+    orderId: orderId,
+    rating: rating ?? this.rating,
+    comment: comment ?? this.comment,
+    tags: tags ?? this.tags,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    status: status ?? this.status,
+    userName: userName ?? this.userName,
+    foodId: foodId ?? this.foodId,
+    foodName: foodName ?? this.foodName,
+    orderCode: orderCode ?? this.orderCode,
+    foodIds: foodIds ?? this.foodIds,
+    serviceRatings: serviceRatings ?? this.serviceRatings,
+    imageUrls: imageUrls ?? this.imageUrls,
+  );
 }

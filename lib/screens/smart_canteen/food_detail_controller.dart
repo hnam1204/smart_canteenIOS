@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../core/utils/safe_change_notifier.dart';
+import '../../core/utils/number_safety.dart';
 import '../../models/firestore_models.dart' as store;
 import '../../repositories/food_repository.dart';
 import '../../repositories/review_repository.dart';
 
-class FoodDetailController extends ChangeNotifier {
+class FoodDetailController extends SafeChangeNotifier {
   FoodDetailController({
     required this.foodId,
     FoodRepository? foodRepository,
@@ -33,9 +35,9 @@ class FoodDetailController extends ChangeNotifier {
   int get reviewCount => _reviews.length;
 
   double get averageRating {
-    if (_reviews.isEmpty) return _food?.rating ?? 0;
+    if (_reviews.isEmpty) return safeFiniteDouble(_food?.rating);
     final total = _reviews.fold<int>(0, (sum, review) => sum + review.rating);
-    return total / _reviews.length;
+    return safeFiniteDouble(total / _reviews.length);
   }
 
   Future<void> bind() async {

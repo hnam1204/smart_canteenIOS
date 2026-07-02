@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/constants/colors.dart';
+import '../../core/utils/number_safety.dart';
 import '../../core/widgets/app_food_image.dart';
 import '../../models/firestore_models.dart' as store;
 import '../../models/topping_model.dart';
@@ -79,8 +80,8 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
   );
   bool get _isAvailable => _remoteFood?.isAvailable ?? widget.isAvailable;
   double get _rating => _controller.averageRating > 0
-      ? _controller.averageRating
-      : (_remoteFood?.rating ?? widget.rating);
+      ? safeFiniteDouble(_controller.averageRating)
+      : safeFiniteDouble(_remoteFood?.rating ?? widget.rating);
   int get _soldCount => _remoteFood?.soldCount ?? widget.soldCount;
 
   List<ToppingModel> get _availableToppings =>
@@ -120,7 +121,7 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
   Future<void> _addToCart() async {
     if (_submitting || !_isAvailable) return;
     if (Firebase.apps.isEmpty || FirebaseAuth.instance.currentUser == null) {
-      _showErrorSnack('Vui lòng đăng nhập để thêm vào giỏ hàng.');
+      _showSnack('Vui lòng đăng nhập để thêm vào giỏ hàng.');
       return;
     }
     setState(() => _submitting = true);
@@ -148,125 +149,61 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
         ),
       );
       if (!mounted) return;
-      // Show a brief success toast, then pop back to Menu/Home.
-      // The snackbar persists on the previous screen so user can see it.
-      _showSuccessToast('$_quantity x $_name');
-      // Short delay so the haptic + snackbar start is perceptible
-      // before the screen transition begins.
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (error) {
-      // Keep user on this screen; show error only.
-      if (mounted) {
-        setState(() => _submitting = false);
-        _showErrorSnack('Không thể thêm món vào giỏ. Vui lòng thử lại.');
-      }
-      return;
-    }
-    // Only reached on success path — submitting is reset after pop animation.
-    if (mounted) setState(() => _submitting = false);
-  }
-
-  /// Shows a brief styled error snackbar. Screen stays visible.
-  void _showErrorSnack(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(
-                Icons.error_outline_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Text(message)),
-            ],
-          ),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-      );
-  }
-
-  /// Shows a floating success toast. The snackbar survives the screen pop
-  /// because it is shown on [ScaffoldMessenger] which lives above the navigator.
-  void _showSuccessToast(String itemLabel) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          // Use a zero-margin padding so the custom container fills the shape
-          padding: EdgeInsets.zero,
-          content: Container(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1DB954), Color(0xFF17A347)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 1),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: Row(
+            content: Row(
               children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.check_rounded,
-                    color: Colors.white,
-                    size: 18,
-                  ),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.white,
+                  size: 20,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Đã thêm vào giỏ hàng',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13.5,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        itemLabel,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                  child: Text(
+                    '$_name đã được thêm vào giỏ hàng',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          // Transparent background — let the inner container handle the look
-          backgroundColor: Colors.transparent,
-          elevation: 0,
+        );
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      } else {
+        Navigator.pushReplacementNamed(context, '/menu');
+      }
+    } catch (error) {
+      if (mounted) _showSnack('Không thể thêm món vào giỏ. Vui lòng thử lại.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
           behavior: SnackBarBehavior.floating,
-          // 1.2 s so user can read before the screen transition completes
-          duration: const Duration(milliseconds: 1200),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
       );
@@ -509,58 +446,60 @@ class _HeroImageSection extends StatelessWidget {
             tween: Tween(begin: 1.025, end: 1),
             duration: const Duration(milliseconds: 700),
             curve: Curves.easeOutCubic,
-            builder: (context, scale, child) =>
-                Transform.scale(scale: scale, child: child),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Stack(
-                children: [
-                  AppFoodImage(
-                    source: screen._image,
-                    width: double.infinity,
-                    height: 282,
-                    fit: BoxFit.cover,
-                  ),
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: 0.58),
-                          ],
+            builder: (context, scale, child) => Transform.scale(
+              scale: safeFiniteDouble(scale, fallback: 1),
+              child: child,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              height: 282,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    AppFoodImage(source: screen._image, fit: BoxFit.cover),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.58),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    left: 14,
-                    right: 14,
-                    bottom: 14,
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _MetricPill(
-                          icon: Icons.star_rounded,
-                          label: screen._rating > 0
-                              ? screen._rating.toStringAsFixed(1)
-                              : 'Chưa có đánh giá',
-                        ),
-                        _MetricPill(
-                          icon: Icons.local_fire_department_rounded,
-                          label: screen._soldLabel(screen._soldCount),
-                        ),
-                        const _MetricPill(
-                          icon: Icons.timer_outlined,
-                          label: '15 phút',
-                        ),
-                      ],
+                    Positioned(
+                      left: 14,
+                      right: 14,
+                      bottom: 14,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _MetricPill(
+                            icon: Icons.star_rounded,
+                            label: screen._rating > 0
+                                ? screen._rating.toStringAsFixed(1)
+                                : 'Chưa có đánh giá',
+                          ),
+                          _MetricPill(
+                            icon: Icons.local_fire_department_rounded,
+                            label: screen._soldLabel(screen._soldCount),
+                          ),
+                          const _MetricPill(
+                            icon: Icons.timer_outlined,
+                            label: '15 phút',
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

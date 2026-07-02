@@ -2,13 +2,14 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
+
+import '../../../core/utils/safe_change_notifier.dart';
 import '../../../models/firestore_models.dart' as firestore;
 import '../../../repositories/order_repository.dart';
 import 'order_model.dart';
 
-class OrderHistoryController extends ChangeNotifier {
+class OrderHistoryController extends SafeChangeNotifier {
   OrderHistoryController({OrderRepository? repository})
     : _repository = repository;
 

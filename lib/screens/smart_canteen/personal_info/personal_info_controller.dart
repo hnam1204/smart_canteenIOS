@@ -5,11 +5,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/safe_change_notifier.dart';
 import '../../../models/firestore_models.dart' as store;
 import '../../../repositories/user_repository.dart';
 import 'user_profile_model.dart';
 
-class PersonalInfoController extends ChangeNotifier {
+class PersonalInfoController extends SafeChangeNotifier {
   PersonalInfoController({UserRepository? repository})
     : _repository = repository;
 

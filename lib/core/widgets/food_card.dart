@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
+import '../utils/number_safety.dart';
+import 'app_food_image.dart';
 
 class FoodCard extends StatelessWidget {
   final String id;
@@ -25,6 +27,8 @@ class FoodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final safePrice = safeFiniteDouble(price);
+    final safeRating = safeFiniteDouble(rating).clamp(0, 5).toDouble();
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -55,20 +59,12 @@ class FoodCard extends StatelessWidget {
                       color: AppColors.divider,
                     ),
                     width: double.infinity,
-                    child: imageUrl.isEmpty
-                        ? const Center(
-                            child: Icon(
-                              Icons.fastfood,
-                              color: AppColors.textSecondary,
-                              size: 40,
-                            ),
-                          )
-                        : ClipRRect(
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(20),
-                            ),
-                            child: Image.network(imageUrl, fit: BoxFit.cover),
-                          ),
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                      child: AppFoodImage(source: imageUrl, fit: BoxFit.cover),
+                    ),
                   ),
                   Positioned(
                     top: 12,
@@ -91,7 +87,7 @@ class FoodCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            rating.toStringAsFixed(1),
+                            safeRating.toStringAsFixed(1),
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -142,7 +138,7 @@ class FoodCard extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          '\$${price.toStringAsFixed(2)}',
+                          '\$${safePrice.toStringAsFixed(2)}',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

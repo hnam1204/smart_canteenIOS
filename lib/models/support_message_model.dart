@@ -23,9 +23,11 @@ class SupportMessageModel {
     required this.createdAt,
   });
 
-  factory SupportMessageModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory SupportMessageModel.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     final data = doc.data() ?? {};
-    
+
     DateTime parseDate(dynamic value) {
       if (value is Timestamp) return value.toDate();
       if (value is DateTime) return value;
@@ -38,10 +40,13 @@ class SupportMessageModel {
       ticketId: data['ticketId']?.toString() ?? '',
       senderId: data['senderId']?.toString() ?? '',
       senderName: data['senderName']?.toString() ?? '',
-      senderRole: data['senderRole']?.toString() ?? 'user',
-      message: data['message']?.toString() ?? '',
+      senderRole:
+          data['senderRole']?.toString() ??
+          data['senderType']?.toString() ??
+          'user',
+      message: data['message']?.toString() ?? data['text']?.toString() ?? '',
       imageUrls: List<String>.from(data['imageUrls'] ?? []),
-      isRead: data['isRead'] == true,
+      isRead: data['isRead'] == true || data['readByUser'] == true,
       createdAt: parseDate(data['createdAt']),
     );
   }
@@ -53,9 +58,13 @@ class SupportMessageModel {
       'senderId': senderId,
       'senderName': senderName,
       'senderRole': senderRole,
+      'senderType': senderRole,
       'message': message,
+      'text': message,
       'imageUrls': imageUrls,
       'isRead': isRead,
+      'readByAdmin': senderRole != 'admin',
+      'readByUser': senderRole == 'user',
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }

@@ -1,18 +1,20 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
+
 
 import '../../models/firestore_models.dart';
 import '../../repositories/category_repository.dart';
 import '../../repositories/food_repository.dart';
 import 'widgets/category_filter_bar.dart';
 
+import '../../core/utils/safe_change_notifier.dart';
+
 enum FoodState { loading, loaded, error, empty }
 
 enum CategoryState { loading, loaded, error, empty }
 
-class MenuProvider extends ChangeNotifier {
+class MenuProvider extends SafeChangeNotifier {
   MenuProvider({
     FoodRepository? foodRepository,
     CategoryRepository? categoryRepository,

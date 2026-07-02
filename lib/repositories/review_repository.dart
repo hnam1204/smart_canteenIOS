@@ -15,7 +15,8 @@ class ReviewRepository {
         query: _service
             .collection('reviews')
             .where('userId', isEqualTo: userId)
-            .orderBy('createdAt', descending: true),
+            .orderBy('createdAt', descending: true)
+            .limit(50),
         fromFirestore: ReviewModel.fromFirestore,
       );
 
@@ -23,13 +24,17 @@ class ReviewRepository {
     final trimmed = foodId.trim();
     if (trimmed.isEmpty) return Stream<List<ReviewModel>>.value(const []);
     return _service.streamCollection(
-      query: _service.collection('reviews').where('foodId', isEqualTo: trimmed),
+      query: _service
+          .collection('reviews')
+          .where('foodId', isEqualTo: trimmed)
+          .limit(50),
       fromFirestore: ReviewModel.fromFirestore,
     );
   }
 
   Future<ReviewModel?> getReviewForOrder(String orderId) async {
-    final snapshot = await _service.collection('reviews')
+    final snapshot = await _service
+        .collection('reviews')
         .where('orderId', isEqualTo: orderId)
         .limit(1)
         .get();
@@ -53,18 +58,19 @@ class ReviewRepository {
       final firestore = _service.firestore;
       final orderRef = firestore.collection('orders').doc(orderId);
       final reviewRef = firestore.collection('reviews').doc(review.id);
-      
+
       await firestore.runTransaction((transaction) async {
         final orderSnap = await transaction.get(orderRef);
         if (!orderSnap.exists) {
           throw Exception('Đơn hàng không tồn tại.');
         }
         final order = OrderModel.fromFirestore(orderSnap);
-        
+
         if (order.userId != userId) {
           throw Exception('Đơn hàng không thuộc về tài khoản này.');
         }
-        if (order.orderStatus != 'delivered' && order.orderStatus != 'completed') {
+        if (order.orderStatus != 'delivered' &&
+            order.orderStatus != 'completed') {
           throw Exception('Chỉ có thể đánh giá sau khi đơn hàng đã giao.');
         }
         if (order.hasReview) {
@@ -75,15 +81,16 @@ class ReviewRepository {
         if (reviewSnap.exists) {
           throw Exception('Bạn đã đánh giá đơn hàng này rồi.');
         }
-        
+
         transaction.set(reviewRef, review.toFirestore());
-        
+
         transaction.update(orderRef, {
           'hasReview': true,
           'reviewId': review.id,
           'reviewedAt': Timestamp.now(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
-        
+
         final logRef = firestore.collection('activity_logs').doc();
         transaction.set(logRef, {
           'id': logRef.id,
@@ -93,13 +100,8 @@ class ReviewRepository {
           'description': 'Mã đơn hàng: ${order.orderCode}',
           'createdAt': Timestamp.now(),
         });
-        
+
         if (pointsReward != null && pointsReward > 0) {
-          final userRef = firestore.collection('users').doc(userId);
-          transaction.update(userRef, {
-            'points': FieldValue.increment(pointsReward),
-          });
-          
           final historyRef = firestore.collection('reward_histories').doc();
           transaction.set(historyRef, {
             'id': historyRef.id,
@@ -117,9 +119,13 @@ class ReviewRepository {
     } on FirebaseException catch (e, stack) {
       debugPrint('FirebaseException in submitReview: $e\n$stack');
       String errMsg = 'Lỗi hệ thống Firestore';
-      if (e.code == 'permission-denied') errMsg = 'Không có quyền thực hiện thao tác này.';
+      if (e.code == 'permission-denied') {
+        errMsg = 'Không có quyền thực hiện thao tác này.';
+      }
       if (e.code == 'not-found') errMsg = 'Tài liệu không tìm thấy.';
-      if (e.code == 'already-exists') errMsg = 'Đã tồn tại đánh giá cho đơn hàng này.';
+      if (e.code == 'already-exists') {
+        errMsg = 'Đã tồn tại đánh giá cho đơn hàng này.';
+      }
       return Result.failure(errMsg);
     } on Exception catch (e, stack) {
       debugPrint('Exception in submitReview: $e\n$stack');

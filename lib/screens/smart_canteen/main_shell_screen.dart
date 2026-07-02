@@ -10,32 +10,6 @@ import 'profile/profile_screen.dart';
 import 'smart_canteen_home_screen.dart' show SmartCanteenHomeScreen;
 import 'widgets/canteen_bottom_nav_bar.dart';
 
-/// InheritedWidget that exposes tab-switching to any descendant widget.
-///
-/// Tab indices:
-/// - 0: Home
-/// - 1: Menu
-/// - 2: Cart
-/// - 3: Notifications
-/// - 4: Profile
-class MainShellController extends InheritedWidget {
-  const MainShellController({
-    super.key,
-    required this.jumpToTab,
-    required super.child,
-  });
-
-  final void Function(int index) jumpToTab;
-
-  /// Returns the nearest [MainShellController], or null if not inside a shell.
-  static MainShellController? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<MainShellController>();
-
-  @override
-  bool updateShouldNotify(MainShellController oldWidget) =>
-      jumpToTab != oldWidget.jumpToTab;
-}
-
 class MainShellScreen extends StatefulWidget {
   const MainShellScreen({super.key, this.initialIndex = 0})
     : assert(initialIndex >= 0 && initialIndex < 5);
@@ -46,7 +20,7 @@ class MainShellScreen extends StatefulWidget {
   State<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingObserver {
+class _MainShellScreenState extends State<MainShellScreen> {
   late int _selectedIndex;
   late final List<Widget?> _pages;
   late final CartProvider _cartProvider;
@@ -55,7 +29,6 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _selectedIndex = widget.initialIndex;
     _pages = List<Widget?>.filled(5, null);
     _cartProvider = CartProvider()..addListener(_onBadgeChanged);
@@ -68,24 +41,11 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _cartProvider.removeListener(_onBadgeChanged);
     _notificationProvider.removeListener(_onBadgeChanged);
     _cartProvider.dispose();
     _notificationProvider.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _refreshAllData();
-    }
-  }
-
-  void _refreshAllData() {
-    _cartProvider.bindCurrentUser();
-    _notificationProvider.bindCurrentUser();
   }
 
   void _onBadgeChanged() {
@@ -137,25 +97,20 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
   Widget build(BuildContext context) {
     final cartCount = _cartProvider.itemCount;
     final notificationCount = _notificationProvider.unreadCount;
-    // Wrap with MainShellController so any descendant can call jumpToTab
-    // without needing to access the private _MainShellScreenState type.
-    return MainShellController(
-      jumpToTab: _selectTab,
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        body: IndexedStack(
-          index: _selectedIndex,
-          children: List<Widget>.generate(
-            _pages.length,
-            (index) => _pages[index] ?? const SizedBox.shrink(),
-          ),
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: List<Widget>.generate(
+          _pages.length,
+          (index) => _pages[index] ?? const SizedBox.shrink(),
         ),
-        bottomNavigationBar: CanteenBottomNavBar(
-          selectedIndex: _selectedIndex,
-          cartCount: cartCount,
-          notificationCount: notificationCount,
-          onTap: _selectTab,
-        ),
+      ),
+      bottomNavigationBar: CanteenBottomNavBar(
+        selectedIndex: _selectedIndex,
+        cartCount: cartCount,
+        notificationCount: notificationCount,
+        onTap: _selectTab,
       ),
     );
   }

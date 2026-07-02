@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../main.dart' show appNavigatorKey;
+import '../core/utils/app_feedback.dart';
 import '../screens/smart_canteen/help_center/support_chat_screen.dart';
 import '../screens/smart_canteen/main_shell_screen.dart';
 import '../screens/smart_canteen/notifications/notification_detail_screen.dart';
@@ -14,6 +15,7 @@ import '../screens/smart_canteen/payment/payment_detail_screen.dart';
 import '../screens/smart_canteen/promotion/promotion_screen.dart';
 import '../screens/smart_canteen/reward_points/reward_points_screen.dart';
 import '../screens/smart_canteen/vouchers/my_vouchers_screen.dart';
+import '../screens/smart_canteen/qr_pickup/qr_pickup_screen.dart';
 
 class NotificationService {
   NotificationService._();
@@ -24,6 +26,7 @@ class NotificationService {
   StreamSubscription<QuerySnapshot>? _firestoreSubscription;
   DateTime? _listenerStartTime;
   final Set<String> _shownNotificationIds = {};
+  bool _dialogShowing = false;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -66,7 +69,9 @@ class NotificationService {
             if (createdAt is Timestamp) {
               final docTime = createdAt.toDate();
               if (_listenerStartTime != null &&
-                  docTime.isBefore(_listenerStartTime!.subtract(const Duration(seconds: 5)))) {
+                  docTime.isBefore(
+                    _listenerStartTime!.subtract(const Duration(seconds: 5)),
+                  )) {
                 // Pre-add existing notifications to set so they won't trigger banners upon launch
                 _shownNotificationIds.add(docId);
                 continue;
@@ -85,21 +90,161 @@ class NotificationService {
             final type = data['type'] as String? ?? 'system';
             final referenceId = data['referenceId'] as String? ?? '';
 
-            // Show custom in-app banner
-            showInAppBanner(
-              title: title,
-              message: message,
-              type: type,
-              referenceId: referenceId,
-            );
+            // Show custom in-app banner or dialog
+            final orderId = _resolveOrderReference(data);
+            if ((type == 'order_ready' || type == 'order_ready_reminder') && orderId.isNotEmpty) {
+              final context = appNavigatorKey.currentContext;
+              if (context != null) {
+                if (!context.mounted) continue;
+                final orderCode =
+                    data['orderCode'] as String? ??
+                    (data['data'] as Map?)?['orderCode'] as String? ??
+                    referenceId;
+                _showOrderReadyDialog(
+                  context,
+                  message,
+                  orderId,
+                  orderCode,
+                  docId,
+                );
+              }
+            } else {
+              showInAppBanner(
+                title: title,
+                message: message,
+                type: type,
+                referenceId: referenceId,
+              );
+            }
           }
         });
+  }
+
+  String _resolveOrderReference(Map<String, dynamic> data) {
+    final nested = data['data'] is Map ? data['data'] as Map : const {};
+    final candidates = [
+      data['orderId'],
+      data['referenceId'],
+      nested['orderId'],
+      data['orderCode'],
+      nested['orderCode'],
+    ];
+    for (final value in candidates) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  Future<void> _markNotificationRead(String notificationId) async {
+    if (notificationId.trim().isEmpty) return;
+    await FirebaseFirestore.instance
+        .collection('notifications')
+        .doc(notificationId)
+        .update({
+          'isRead': true,
+          'status': 'read',
+          'readAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+  }
+
+  void _showOrderReadyDialog(
+    BuildContext context,
+    String message,
+    String orderId,
+    String orderCode,
+    String notificationId,
+  ) {
+    if (_dialogShowing) return;
+    _dialogShowing = true;
+
+    // Trigger haptic feedback
+    HapticFeedback.vibrate().catchError((_) {});
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(
+              Icons.restaurant_menu_rounded,
+              color: Color(0xFFFF6B00),
+              size: 28,
+            ),
+            SizedBox(width: 10),
+            Text(
+              'Món đã sẵn sàng',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                color: Color(0xFF1F2937),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontSize: 14.5,
+            color: Color(0xFF4B5563),
+            height: 1.4,
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Đóng',
+              style: TextStyle(
+                color: Color(0xFF9CA3AF),
+                fontWeight: FontWeight.w600,
+                fontSize: 14.5,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B00),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            onPressed: () {
+              Navigator.of(context).pop();
+              unawaited(_markNotificationRead(notificationId));
+              appNavigatorKey.currentState?.pushNamed(
+                '/qr-pickup',
+                arguments: {
+                  'orderId': orderId,
+                  'referenceId': orderId,
+                  'orderCode': orderCode,
+                },
+              );
+            },
+            child: const Text(
+              'Xem QR nhận món',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+            ),
+          ),
+        ],
+      ),
+    ).then((_) {
+      _dialogShowing = false;
+    });
   }
 
   void stopListening() {
     _firestoreSubscription?.cancel();
     _firestoreSubscription = null;
     _shownNotificationIds.clear();
+    _dialogShowing = false;
   }
 
   void showInAppBanner({
@@ -135,14 +280,40 @@ class NotificationService {
 
   void handleNotificationTap(Map<String, dynamic> data) {
     final type = data['type'] as String?;
-    final referenceId = data['referenceId'] as String? ?? '';
+    final resolvedReference = _resolveOrderReference(data);
+    final referenceId = resolvedReference.isNotEmpty
+        ? resolvedReference
+        : (data['referenceId'] as String? ?? '');
     final context = appNavigatorKey.currentContext;
     if (context == null) return;
+
+    final bool needsReferenceId = const [
+      'order',
+      'order_ready',
+      'order_ready_reminder',
+      'payment',
+      'support',
+      'system',
+    ].contains(type);
+
+    if (needsReferenceId && referenceId.trim().isEmpty) {
+      showAppSnackBar(
+        context,
+        'Thông báo không có mã tham chiếu hợp lệ.',
+        icon: Icons.error_outline_rounded,
+        iconColor: Colors.red,
+      );
+      return;
+    }
 
     final Widget destination;
     switch (type) {
       case 'order':
         destination = OrderDetailScreen(orderId: referenceId);
+        break;
+      case 'order_ready':
+      case 'order_ready_reminder':
+        destination = QRPickupScreen(orderId: referenceId);
         break;
       case 'payment':
         destination = PaymentDetailScreen(paymentId: referenceId);
@@ -163,7 +334,9 @@ class NotificationService {
         destination = NotificationDetailScreen(notificationId: referenceId);
         break;
       default:
-        destination = const MainShellScreen(initialIndex: 3); // Notification tab in main shell
+        destination = const MainShellScreen(
+          initialIndex: 3,
+        ); // Notification tab in main shell
         break;
     }
 
@@ -191,7 +364,9 @@ class NotificationService {
     // Stub
   }
 
-  static const MethodChannel _badgeChannel = MethodChannel('com.huflit.smart_canteen/badge');
+  static const MethodChannel _badgeChannel = MethodChannel(
+    'com.huflit.smart_canteen/badge',
+  );
   Future<void> setBadge(int count) async {
     try {
       await _badgeChannel.invokeMethod('setBadge', count);
@@ -226,7 +401,8 @@ class _InAppNotificationBanner extends StatefulWidget {
   final VoidCallback onDismiss;
 
   @override
-  State<_InAppNotificationBanner> createState() => _InAppNotificationBannerState();
+  State<_InAppNotificationBanner> createState() =>
+      _InAppNotificationBannerState();
 }
 
 class _InAppNotificationBannerState extends State<_InAppNotificationBanner>
@@ -246,10 +422,7 @@ class _InAppNotificationBannerState extends State<_InAppNotificationBanner>
     _offsetAnimation = Tween<Offset>(
       begin: const Offset(0, -1.2),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutBack,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
 
     _controller.forward();
 
@@ -339,7 +512,8 @@ class _InAppNotificationBannerState extends State<_InAppNotificationBanner>
             });
           },
           onVerticalDragEnd: (details) {
-            if (details.primaryVelocity != null && details.primaryVelocity! < 0) {
+            if (details.primaryVelocity != null &&
+                details.primaryVelocity! < 0) {
               _dismiss();
             }
           },
@@ -406,7 +580,11 @@ class _InAppNotificationBannerState extends State<_InAppNotificationBanner>
                   ),
                   const SizedBox(width: 8),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF9CA3AF)),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: Color(0xFF9CA3AF),
+                    ),
                     onPressed: _dismiss,
                     constraints: const BoxConstraints(),
                     padding: EdgeInsets.zero,

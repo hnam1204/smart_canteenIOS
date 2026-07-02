@@ -2,13 +2,14 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
+
+import '../core/utils/safe_change_notifier.dart';
 import '../models/firestore_models.dart';
 import '../repositories/cart_repository.dart';
 import '../repositories/voucher_repository.dart';
 
-class CartProvider extends ChangeNotifier {
+class CartProvider extends SafeChangeNotifier {
   CartProvider({
     CartRepository? repository,
     VoucherRepository? voucherRepository,

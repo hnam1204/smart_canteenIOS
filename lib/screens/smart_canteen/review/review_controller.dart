@@ -2,14 +2,14 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../../core/utils/result.dart';
+import '../../../core/utils/safe_change_notifier.dart';
 import '../../../models/firestore_models.dart' as store;
 import '../../../repositories/review_repository.dart';
 import 'review_model.dart';
 
-class ReviewController extends ChangeNotifier {
+class ReviewController extends SafeChangeNotifier {
   ReviewController({this.order = demoReviewOrder, ReviewRepository? repository})
     : _repository = repository,
       _history = List<ReviewModel>.of(demoReviewHistory),
@@ -133,21 +133,29 @@ class ReviewController extends ChangeNotifier {
         comment: _comment.trim(),
         tags: _selectedTags.toList(growable: false),
         createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        status: 'active',
+        userName: user.displayName ?? user.email ?? '',
+        foodId: order.items.isEmpty ? '' : order.items.first.name,
+        foodName: order.items.isEmpty ? '' : order.items.first.name,
         orderCode: order.id,
         foodIds: const [],
         serviceRatings: Map<String, int>.of(_serviceRatings),
         imageUrls: _images.map((img) => img.id).toList(),
       );
-      final repoResult = await (_repository ??= ReviewRepository()).submitReview(
-        review: storeReview,
-        orderId: order.id,
-        userId: user.uid,
-        pointsReward: 50,
-      );
+      final repoResult = await (_repository ??= ReviewRepository())
+          .submitReview(
+            review: storeReview,
+            orderId: order.id,
+            userId: user.uid,
+            pointsReward: 50,
+          );
       if (!repoResult.isSuccess) {
         _submitting = false;
         notifyListeners();
-        return Result.failure(repoResult.error ?? 'Đã xảy ra lỗi khi gửi đánh giá.');
+        return Result.failure(
+          repoResult.error ?? 'Đã xảy ra lỗi khi gửi đánh giá.',
+        );
       }
     } else {
       await Future<void>.delayed(const Duration(milliseconds: 520));

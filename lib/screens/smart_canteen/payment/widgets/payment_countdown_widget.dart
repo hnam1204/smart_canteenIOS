@@ -6,10 +6,12 @@ class PaymentCountdownWidget extends StatelessWidget {
   const PaymentCountdownWidget({
     super.key,
     required this.secondsRemaining,
+    required this.expired,
     required this.onRefresh,
   });
 
   final int secondsRemaining;
+  final bool expired;
   final VoidCallback onRefresh;
 
   String get _timeText {
@@ -20,6 +22,49 @@ class PaymentCountdownWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (expired) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFEEEE),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: AppColors.error.withValues(alpha: 0.18)),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.timer_off_outlined,
+              size: 18,
+              color: AppColors.error,
+            ),
+            const SizedBox(width: 7),
+            const Expanded(
+              child: Text(
+                'QR đã hết hạn',
+                style: TextStyle(
+                  color: AppColors.error,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            TextButton.icon(
+              key: const ValueKey('create-new-vietqr'),
+              onPressed: onRefresh,
+              icon: const Icon(Icons.refresh_rounded, size: 17),
+              label: const Text('Tạo mã QR mới'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.error,
+                textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
       decoration: BoxDecoration(

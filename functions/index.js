@@ -8,13 +8,14 @@ const db = admin.firestore();
 // ────────────────────────────────────────────────────────────────────
 // Helper: create in-app notification document
 // ────────────────────────────────────────────────────────────────────
-async function addNotificationToDb(uid, { title, body, type, referenceId }) {
+async function addNotificationToDb(uid, { title, body, type, referenceId, extra = {} }) {
   await db.collection("notifications").add({
     userId: uid,
     title,
     message: body,
     type,
     referenceId: referenceId || "",
+    ...extra,
     isRead: false,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -23,6 +24,57 @@ async function addNotificationToDb(uid, { title, body, type, referenceId }) {
 // ────────────────────────────────────────────────────────────────────
 // 1. Order status change -> create in-app notification
 // ────────────────────────────────────────────────────────────────────
+async function addManualTransferNotifications(orderId, order) {
+  const orderCode = order.orderCode || orderId;
+  const counterId = order.counterId || order.pickupCounter || "";
+  const basePayload = {
+    title: "Khách đã xác nhận chuyển khoản",
+    message: `Đơn ${orderCode} đã được khách báo chuyển khoản, vui lòng kiểm tra giao dịch.`,
+    type: "payment_manual_confirm",
+    referenceId: orderId,
+    orderId,
+    orderCode,
+    counterId,
+    isRead: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  const adminsSnapshot = await db
+    .collection("users")
+    .where("role", "in", ["admin", "staff"])
+    .get();
+
+  if (adminsSnapshot.empty) {
+    await db.collection("notifications").add({
+      userId: "admin",
+      ...basePayload,
+    });
+    return;
+  }
+
+  const batch = db.batch();
+  adminsSnapshot.forEach((userDoc) => {
+    const notificationRef = db.collection("notifications").doc();
+    batch.set(notificationRef, {
+      userId: userDoc.id,
+      ...basePayload,
+    });
+  });
+  await batch.commit();
+}
+
+exports.onCustomerTransferConfirmed = onDocumentUpdated("orders/{orderId}", async (event) => {
+  const before = event.data.before.data();
+  const after = event.data.after.data();
+
+  if (before.customerConfirmedTransfer === true || after.customerConfirmedTransfer !== true) {
+    return;
+  }
+  if (after.paymentStatus === "paid") return;
+
+  await addManualTransferNotifications(event.params.orderId, after);
+});
+
 exports.onOrderStatusChanged = onDocumentUpdated("orders/{orderId}", async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
@@ -47,12 +99,22 @@ exports.onOrderStatusChanged = onDocumentUpdated("orders/{orderId}", async (even
 
   const msg = statusMessages[after.orderStatus];
   if (!msg) return;
+  const isReady = after.orderStatus === "ready" || after.orderStatus === "readyForPickup";
+  const counterName = after.counterName || after.pickupCounter || "Quầy nhận món";
 
   await addNotificationToDb(uid, {
     title: msg.title,
     body: msg.body,
-    type: "order",
+    type: isReady ? "order_ready" : "order",
     referenceId: orderId,
+    extra: {
+      orderId,
+      orderCode,
+      counterId: after.counterId || "",
+      counterName,
+      pickupCounter: after.pickupCounter || counterName,
+      data: { orderId, orderCode },
+    },
   });
 });
 
@@ -65,8 +127,9 @@ exports.onSupportMessageCreated = onDocumentCreated(
     const message = event.data.data();
     if (!message) return;
 
-    // Only notify when staff replies (senderType == 'staff' or 'admin')
-    if (message.senderType !== "staff" && message.senderType !== "admin") return;
+    // Only notify when staff replies (senderType/senderRole == 'staff' or 'admin')
+    const senderType = message.senderType || message.senderRole;
+    if (senderType !== "staff" && senderType !== "admin") return;
 
     const ticketDoc = await db.collection("support_tickets").doc(event.params.ticketId).get();
     if (!ticketDoc.exists) return;
@@ -77,7 +140,7 @@ exports.onSupportMessageCreated = onDocumentCreated(
 
     await addNotificationToDb(uid, {
       title: "Phản hồi hỗ trợ",
-      body: message.text || "Bạn có phản hồi mới từ nhân viên hỗ trợ.",
+      body: message.text || message.message || "Bạn có phản hồi mới từ nhân viên hỗ trợ.",
       type: "support",
       referenceId: event.params.ticketId,
     });

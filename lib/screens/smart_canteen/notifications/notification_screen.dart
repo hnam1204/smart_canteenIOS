@@ -19,6 +19,7 @@ import '../payment/payment_detail_screen.dart';
 import '../promotion/promotion_screen.dart';
 import '../reward_points/reward_points_screen.dart';
 import '../vouchers/my_vouchers_screen.dart';
+import '../qr_pickup/qr_pickup_screen.dart';
 import 'widgets/notification_card.dart';
 import 'widgets/notification_tab.dart';
 
@@ -99,6 +100,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
           AppNavigator.push<void>(
             context,
             builder: (_) => OrderDetailScreen(orderId: notification.referenceId),
+          );
+          return;
+        }
+      case NotificationType.orderReady:
+      case NotificationType.orderReadyReminder:
+        if (notification.referenceId.isNotEmpty) {
+          AppNavigator.push<void>(
+            context,
+            builder: (_) => QRPickupScreen(orderId: notification.referenceId),
           );
           return;
         }

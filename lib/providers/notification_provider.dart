@@ -2,12 +2,13 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
+
+import '../core/utils/safe_change_notifier.dart';
 import '../repositories/notification_repository.dart';
 import '../services/notification_service.dart' as push;
 
-class NotificationProvider extends ChangeNotifier {
+class NotificationProvider extends SafeChangeNotifier {
   NotificationProvider({NotificationRepository? repository})
     : _repository = repository;
 

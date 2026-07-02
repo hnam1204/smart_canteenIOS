@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/navigation/app_navigator.dart';
@@ -625,26 +626,25 @@ class _Avatar extends StatelessWidget {
           border: Border.all(color: const Color(0xFFFFE5D2), width: 2),
         ),
         child: ClipOval(
-          child: Image.network(
-            avatarUrl,
+          child: CachedNetworkImage(
+            imageUrl: avatarUrl,
             fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) =>
-                _PlaceholderAvatar(variant: variant),
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      palettes[variant][0],
-                    ),
+            memCacheWidth: 150,
+            memCacheHeight: 150,
+            placeholder: (context, url) => Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    palettes[variant % palettes.length][0],
                   ),
                 ),
-              );
-            },
+              ),
+            ),
+            errorWidget: (context, url, error) =>
+                _PlaceholderAvatar(variant: variant),
           ),
         ),
       );

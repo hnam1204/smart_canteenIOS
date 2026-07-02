@@ -63,6 +63,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
         final order = await OrderRepository().getOrder(resolvedOrderId)
             ?? await OrderRepository().getOrderByCode(resolvedOrderId);
         
+        if (!mounted) return;
         if (order == null) {
           setState(() {
             _eligibilityError = 'Đơn hàng không tồn tại.';
@@ -97,13 +98,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
           orderedAt: '${order.createdAt.day.toString().padLeft(2, '0')}/${order.createdAt.month.toString().padLeft(2, '0')}/${order.createdAt.year} - ${order.createdAt.hour.toString().padLeft(2, '0')}:${order.createdAt.minute.toString().padLeft(2, '0')}',
           items: orderItems,
         );
-
+        
+        if (!mounted) return;
         final oldController = _controller;
         _currentOrder = reviewOrder;
         _controller = ReviewController(order: _currentOrder);
         oldController.dispose();
 
         final existingReview = await ReviewRepository().getReviewForOrder(order.id);
+        if (!mounted) return;
         if (order.hasReview || existingReview != null) {
           setState(() {
             _alreadyReviewed = true;
@@ -126,6 +129,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
           return;
         }
       } catch (e) {
+        if (!mounted) return;
         setState(() {
           _eligibilityError = 'Không thể kiểm tra trạng thái đơn hàng: ${e.toString()}';
           _checkingEligibility = false;
@@ -133,6 +137,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
         return;
       }
     }
+    if (!mounted) return;
     setState(() {
       _checkingEligibility = false;
     });

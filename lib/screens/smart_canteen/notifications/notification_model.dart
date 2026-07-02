@@ -9,6 +9,8 @@ enum NotificationType {
   review,
   system,
   promotion,
+  orderReady,
+  orderReadyReminder,
 }
 
 class AppNotification {
@@ -40,6 +42,8 @@ class AppNotification {
       case NotificationType.voucher:
         return NotificationFilter.offers;
       case NotificationType.order:
+      case NotificationType.orderReady:
+      case NotificationType.orderReadyReminder:
       case NotificationType.payment:
       case NotificationType.support:
       case NotificationType.reward:

@@ -1,5 +1,36 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+String _string(dynamic value) => value?.toString() ?? '';
+
+int _int(dynamic value) {
+  if (value is num) {
+    final doubleValue = value.toDouble();
+    if (!doubleValue.isFinite) return 0;
+    return value.toInt();
+  }
+  if (value is String) {
+    return _int(num.tryParse(value.trim()));
+  }
+  return 0;
+}
+
+String _imageString(Map<String, dynamic> data) {
+  const keys = [
+    'imageUrl',
+    'image',
+    'photoUrl',
+    'thumbnail',
+    'thumbnailUrl',
+    'image_url',
+    'photo_url',
+  ];
+  for (final key in keys) {
+    final value = _string(data[key]).trim();
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
 class BannerModel {
   final String id;
   final String title;
@@ -35,9 +66,11 @@ class BannerModel {
     required this.updatedAt,
   });
 
-  factory BannerModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory BannerModel.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
     final data = doc.data() ?? {};
-    
+
     DateTime parseDate(dynamic value) {
       if (value is Timestamp) return value.toDate();
       if (value is DateTime) return value;
@@ -50,12 +83,12 @@ class BannerModel {
       title: data['title']?.toString() ?? '',
       subtitle: data['subtitle']?.toString() ?? '',
       description: data['description']?.toString() ?? '',
-      imageUrl: data['imageUrl']?.toString() ?? '',
+      imageUrl: _imageString(data),
       buttonText: data['buttonText']?.toString() ?? '',
       actionType: data['actionType']?.toString() ?? 'menu',
       actionValue: data['actionValue']?.toString() ?? '',
       discountText: data['discountText']?.toString() ?? '',
-      sortOrder: (data['sortOrder'] as num?)?.toInt() ?? 0,
+      sortOrder: _int(data['sortOrder']),
       isActive: data['isActive'] == true,
       startAt: parseDate(data['startAt']),
       endAt: parseDate(data['endAt']),

@@ -309,11 +309,11 @@ class PickupInfoCard extends StatelessWidget {
 class SuccessActionButtons extends StatelessWidget {
   const SuccessActionButtons({
     super.key,
-    required this.onPickupQr,
+    required this.onTrackOrder,
     required this.onHome,
   });
 
-  final VoidCallback onPickupQr;
+  final VoidCallback onTrackOrder;
   final VoidCallback onHome;
 
   @override
@@ -328,8 +328,8 @@ class SuccessActionButtons extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
           ),
           child: FilledButton.icon(
-            key: const ValueKey('payment-success-qr'),
-            onPressed: onPickupQr,
+            key: const ValueKey('payment-success-track-order'),
+            onPressed: onTrackOrder,
             style: FilledButton.styleFrom(
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,
@@ -337,9 +337,9 @@ class SuccessActionButtons extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
-            icon: const Icon(Icons.qr_code_2_rounded),
+            icon: const Icon(Icons.delivery_dining_rounded),
             label: const Text(
-              'Xem mã QR nhận món',
+              'Theo dõi đơn hàng',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
             ),
           ),

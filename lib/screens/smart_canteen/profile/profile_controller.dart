@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
+import '../../../core/utils/safe_change_notifier.dart';
 import '../../../models/firestore_models.dart' as store;
 import '../../../repositories/cart_repository.dart';
 import '../../../repositories/notification_repository.dart';
@@ -11,7 +11,7 @@ import '../../../repositories/order_repository.dart';
 import '../../../repositories/user_repository.dart';
 import 'user_model.dart';
 
-class ProfileController extends ChangeNotifier {
+class ProfileController extends SafeChangeNotifier {
   ProfileController({
     UserRepository? userRepository,
     OrderRepository? orderRepository,

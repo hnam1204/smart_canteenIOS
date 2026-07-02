@@ -1,3 +1,4 @@
+import '../../../models/firestore_models.dart' as store;
 import '../../../models/app_settings_model.dart';
 
 enum PaymentMethod { cash, bankQr }
@@ -6,22 +7,31 @@ enum PaymentStatus { pending, paid, expired }
 
 class PaymentOrderItem {
   const PaymentOrderItem({
+    this.foodId = '',
     required this.name,
     required this.description,
     required this.quantity,
     required this.unitPrice,
     required this.imageAsset,
     this.note = '',
+    this.basePrice,
+    this.toppingTotal = 0,
+    this.selectedToppings = const [],
   });
 
+  final String foodId;
   final String name;
   final String description;
   final int quantity;
   final int unitPrice;
   final String imageAsset;
   final String note;
+  final int? basePrice;
+  final int toppingTotal;
+  final List<store.ToppingModel> selectedToppings;
 
   int get total => unitPrice * quantity;
+  int get resolvedBasePrice => basePrice ?? (unitPrice - toppingTotal);
 }
 
 class PaymentOrderModel {
@@ -32,6 +42,7 @@ class PaymentOrderModel {
     this.voucherDiscount = 0,
     this.voucherCode,
     this.voucherId,
+    this.voucherTitle,
   });
 
   final String id;
@@ -40,6 +51,7 @@ class PaymentOrderModel {
   final int voucherDiscount;
   final String? voucherCode;
   final String? voucherId;
+  final String? voucherTitle;
 
   int get subtotal => items.fold(0, (sum, item) => sum + item.total);
 
@@ -47,7 +59,7 @@ class PaymentOrderModel {
       (subtotal + serviceFee - voucherDiscount).clamp(0, 1 << 31).toInt();
 
   String get transferDescription =>
-      'ThanhToan_${id.replaceAll(RegExp('[^A-Za-z0-9]'), '')}';
+      'ThanhToan${id.replaceAll(RegExp('[^A-Za-z0-9]'), '')}';
 }
 
 class QrPaymentModel {

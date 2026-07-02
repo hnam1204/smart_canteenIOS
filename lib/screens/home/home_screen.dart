@@ -4,17 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/navigation/app_navigator.dart';
 import '../../core/theme/text_styles.dart';
 import '../../core/utils/app_feedback.dart';
+import '../../core/widgets/app_food_image.dart';
 import '../../core/widgets/custom_bottom_nav_bar.dart';
 import '../../core/widgets/gradient_header.dart';
 import '../../core/widgets/info_card.dart';
 import '../../core/widgets/mini_app_item.dart';
 import '../../core/widgets/skeleton_box.dart';
+import '../../repositories/banner_repository.dart';
 import '../splash/splash_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -29,7 +30,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _bannersSubscription;
 
   String _displayName = '';
   List<Map<String, dynamic>> _banners = [];
@@ -85,21 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
             });
       }
 
-      _bannersSubscription = FirebaseFirestore.instance
-          .collection('banners')
-          .where('isActive', isEqualTo: true)
-          .orderBy('sortOrder')
-          .snapshots()
-          .listen((snapshot) {
-            if (!mounted) return;
-            final list = snapshot.docs.map((doc) => doc.data()).toList();
-            setState(() {
-              _banners = list;
-              _bannersLoading = false;
-              _currentIndicatorIndex = 0;
-            });
-            _setupPageControllerAndTimer();
-          });
+      unawaited(_loadBanners());
     } else {
       // Offline fallback
       _banners = _demoBanners;
@@ -112,10 +98,44 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     unawaited(_userSubscription?.cancel());
-    unawaited(_bannersSubscription?.cancel());
     _timer?.cancel();
     _pageController?.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadBanners() async {
+    try {
+      final banners = await BannerRepository().loadActiveBanners();
+      if (!mounted) return;
+      setState(() {
+        _banners = banners
+            .map(
+              (banner) => {
+                'title': banner.title,
+                'subtitle': banner.subtitle,
+                'description': banner.description,
+                'imageUrl': banner.imageUrl,
+                'buttonText': banner.buttonText,
+                'actionType': banner.actionType,
+                'actionValue': banner.actionValue,
+                'discountText': banner.discountText,
+                'isActive': banner.isActive,
+                'sortOrder': banner.sortOrder,
+              },
+            )
+            .toList(growable: false);
+        _bannersLoading = false;
+        _currentIndicatorIndex = 0;
+      });
+      _setupPageControllerAndTimer();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _banners = _demoBanners;
+        _bannersLoading = false;
+      });
+      _setupPageControllerAndTimer();
+    }
   }
 
   void _setupPageControllerAndTimer() {
@@ -194,6 +214,23 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     return 'Nguyễn Hải Nam';
+  }
+
+  String _imageSource(Map<String, dynamic> data) {
+    const keys = [
+      'imageUrl',
+      'image',
+      'photoUrl',
+      'thumbnail',
+      'thumbnailUrl',
+      'image_url',
+      'photo_url',
+    ];
+    for (final key in keys) {
+      final value = data[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '';
   }
 
   void _onNavigationTap(int value) {
@@ -423,7 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context, index) {
               final bannerIndex = index % _banners.length;
               final banner = _banners[bannerIndex];
-              final imageUrl = banner['imageUrl'] as String? ?? '';
+              final imageUrl = _imageSource(banner);
               final title = banner['title'] as String? ?? '';
               final subtitle = banner['subtitle'] as String? ?? '';
               final actionText = banner['actionText'] as String? ?? '';
@@ -445,23 +482,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     fit: StackFit.expand,
                     children: [
                       (imageUrl.isNotEmpty && !_isTesting)
-                          ? CachedNetworkImage(
-                              imageUrl: imageUrl,
-                              fit: BoxFit.cover,
-                              fadeInDuration: const Duration(milliseconds: 300),
-                              placeholder: (context, url) =>
-                                  const SkeletonBox(height: 160, radius: 22),
-                              errorWidget: (context, url, error) => Container(
-                                color: AppColors.surfaceSoft,
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.broken_image_rounded,
-                                    color: AppColors.textTertiary,
-                                    size: 40,
-                                  ),
-                                ),
-                              ),
-                            )
+                          ? AppFoodImage(source: imageUrl, fit: BoxFit.cover)
                           : Container(
                               color: AppColors.surfaceSoft,
                               child: const Center(

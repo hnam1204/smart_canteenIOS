@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/navigation/app_navigator.dart';
+import '../../core/widgets/app_food_image.dart';
 import '../../models/firestore_models.dart' as store;
 import '../../providers/cart_provider.dart';
 import '../../providers/voucher_provider.dart';
@@ -102,6 +103,8 @@ class _CartScreenState extends State<CartScreen> {
           ].join('\n'),
           basePrice: item.basePrice,
           toppingTotal: item.toppingTotal,
+          note: item.note,
+          selectedToppings: item.selectedToppings,
           total: item.total,
           quantity: item.quantity,
           image: item.imageUrl,
@@ -181,12 +184,16 @@ class _CartScreenState extends State<CartScreen> {
           items: _items
               .map(
                 (item) => PaymentOrderItem(
+                  foodId: item.foodId,
                   name: item.name,
                   description: item.description,
                   quantity: item.quantity,
                   unitPrice: item.total ~/ item.quantity,
                   imageAsset: item.image,
-                  note: item.description,
+                  note: item.note,
+                  basePrice: item.basePrice,
+                  toppingTotal: item.toppingTotal,
+                  selectedToppings: item.selectedToppings,
                 ),
               )
               .toList(growable: false),
@@ -194,6 +201,7 @@ class _CartScreenState extends State<CartScreen> {
           voucherDiscount: _cartProvider.voucherDiscount,
           voucherCode: _cartProvider.voucherCode,
           voucherId: _cartProvider.selectedVoucher?.id,
+          voucherTitle: _cartProvider.selectedVoucher?.title,
         ),
       ),
     );
@@ -437,28 +445,12 @@ class _CartItemCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(11),
-                child: item.image.startsWith('assets/')
-                    ? Image.asset(
-                        item.image,
-                        width: compact ? 92 : 118,
-                        height: 126,
-                        fit: BoxFit.cover,
-                      )
-                    : Image.network(
-                        item.image,
-                        width: compact ? 92 : 118,
-                        height: 126,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
-                          width: compact ? 92 : 118,
-                          height: 126,
-                          color: AppColors.primarySoft,
-                          child: const Icon(
-                            Icons.restaurant_rounded,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
+                child: AppFoodImage(
+                  source: item.image,
+                  width: compact ? 92 : 118,
+                  height: 126,
+                  fit: BoxFit.cover,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -922,6 +914,8 @@ class _CartItemData {
     required this.description,
     required this.basePrice,
     required this.toppingTotal,
+    required this.note,
+    required this.selectedToppings,
     required this.total,
     required this.quantity,
     required this.image,
@@ -932,6 +926,8 @@ class _CartItemData {
   final String description;
   final int basePrice;
   final int toppingTotal;
+  final String note;
+  final List<store.ToppingModel> selectedToppings;
   final int total;
   int quantity;
   final String image;

@@ -48,11 +48,15 @@ class NotificationController extends ChangeNotifier {
       _repository ??= NotificationRepository();
       await _subscription?.cancel();
       _subscription = _repository!
-          .watchNotificationsPaged(FirebaseAuth.instance.currentUser!.uid, _limit)
+          .watchNotificationsPaged(
+            FirebaseAuth.instance.currentUser!.uid,
+            _limit,
+          )
           .listen(
             (notifications) {
               if (_disposed) return;
               _notifications = notifications
+                  .where((item) => item.status != 'deleted')
                   .map(_fromFirestore)
                   .toList(growable: false);
               _hasMore = notifications.length >= _limit;
@@ -87,7 +91,9 @@ class NotificationController extends ChangeNotifier {
 
   Future<void> deleteNotification(String id) async {
     // Optimistic UI update: remove from local list immediately
-    _notifications = _notifications.where((n) => n.id != id).toList(growable: false);
+    _notifications = _notifications
+        .where((n) => n.id != id)
+        .toList(growable: false);
     notifyListeners();
 
     if (Firebase.apps.isNotEmpty && FirebaseAuth.instance.currentUser != null) {
@@ -175,6 +181,8 @@ class NotificationController extends ChangeNotifier {
   AppNotification _fromFirestore(firestore.NotificationModel item) {
     final type = switch (item.type) {
       'order' || 'orderCompleted' || 'orderPreparing' => NotificationType.order,
+      'order_ready' => NotificationType.orderReady,
+      'order_ready_reminder' => NotificationType.orderReadyReminder,
       'payment' => NotificationType.payment,
       'support' => NotificationType.support,
       'voucher' || 'discount' => NotificationType.voucher,

@@ -56,7 +56,7 @@ void main() {
     expect(find.text('MB BANK'), findsOneWidget);
     expect(find.text('Nguyễn Hải Nam'), findsOneWidget);
     expect(find.text('195989'), findsOneWidget);
-    expect(find.text('ThanhToan_SC250522000123'), findsOneWidget);
+    expect(find.text('ThanhToanSC250522000123'), findsOneWidget);
     expect(find.text('QR hết hạn sau 10:00'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('copy-bank-account')));
@@ -66,7 +66,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('bank transfer opens pickup QR while awaiting verification', (
+  testWidgets('bank transfer can send manual review request without checkout', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 1450));
@@ -74,13 +74,31 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: PaymentScreen()));
     await tester.tap(find.byKey(const ValueKey('payment-method-bankQr')));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('confirm-payment')));
     await tester.pump(const Duration(milliseconds: 700));
-    await tester.pumpAndSettle();
 
-    expect(find.byType(QRPickupScreen), findsOneWidget);
-    expect(find.textContaining('Chờ xác nhận'), findsWidgets);
+    expect(find.byKey(const ValueKey('confirm-payment')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('manual-transfer-confirm')),
+      findsOneWidget,
+    );
+    expect(find.byType(QRPickupScreen), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('manual-transfer-confirm')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Xác nhận đã chuyển khoản?'), findsOneWidget);
+
+    await tester.tap(find.text('Hủy'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Đã gửi yêu cầu xác nhận'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('manual-transfer-confirm')));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Tôi đã chuyển khoản'));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('Đã gửi yêu cầu xác nhận'), findsOneWidget);
+    expect(find.text('Đang chờ admin xác nhận'), findsOneWidget);
+    expect(find.byType(QRPickupScreen), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

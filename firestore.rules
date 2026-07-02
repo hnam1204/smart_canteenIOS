@@ -39,6 +39,17 @@ service cloud.firestore {
       ]);
     }
 
+    function safeUserPointsDeduction() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'points',
+        'updatedAt'
+      ])
+      && request.resource.data.points is int
+      && resource.data.points is int
+      && request.resource.data.points <= resource.data.points
+      && request.resource.data.points >= 0;
+    }
+
     function safeOrderCreate() {
       return ownsIncoming()
         && request.resource.data.orderCode is string
@@ -58,6 +69,42 @@ service cloud.firestore {
         );
     }
 
+    function safeManualTransferOrderUpdate() {
+      return ownsExisting()
+        && resource.data.paymentMethod in ['bankQr', 'bank']
+        && resource.data.paymentStatus != 'paid'
+        && request.resource.data.paymentStatus == resource.data.paymentStatus
+        && request.resource.data.orderStatus == resource.data.orderStatus
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'customerConfirmedTransfer',
+          'customerConfirmedTransferAt',
+          'paymentReviewStatus',
+          'updatedAt'
+        ])
+        && (!resource.data.keys().hasAll(['customerConfirmedTransfer'])
+          || resource.data.customerConfirmedTransfer == false)
+        && request.resource.data.customerConfirmedTransfer == true
+        && request.resource.data.customerConfirmedTransferAt is timestamp
+        && request.resource.data.paymentReviewStatus == 'waiting_admin_confirm'
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function safeManualTransferPaymentUpdate() {
+      return ownsExisting()
+        && resource.data.method in ['bankQr', 'bank']
+        && resource.data.status == 'pending'
+        && request.resource.data.status == 'pending_manual_review'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'customerConfirmedTransfer',
+          'customerConfirmedTransferAt',
+          'updatedAt'
+        ])
+        && request.resource.data.customerConfirmedTransfer == true
+        && request.resource.data.customerConfirmedTransferAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
     match /categories/{categoryId} {
       allow read: if true;
       allow write: if admin();
@@ -69,11 +116,46 @@ service cloud.firestore {
     }
 
     match /vouchers/{voucherId} {
-      allow read: if signedIn();
+      allow read: if admin() || (signedIn() && resource.data.isActive == true);
       allow write: if admin();
     }
 
+    match /user_vouchers/{userVoucherId} {
+      allow read: if ownsExisting();
+      allow create: if ownsIncoming()
+        && request.resource.data.voucherId is string
+        && request.resource.data.voucherCode is string
+        && request.resource.data.status in ['active', 'available'];
+      allow update: if ownsExisting()
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.voucherId == resource.data.voucherId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'usedAt',
+          'orderId',
+          'updatedAt'
+        ])
+        && request.resource.data.status in ['used', 'expired', 'active', 'available'];
+      allow delete: if false;
+    }
+
+    match /voucher_usages/{usageId} {
+      allow read: if ownsExisting();
+      allow create: if ownsIncoming()
+        && request.resource.data.voucherId is string
+        && request.resource.data.voucherCode is string
+        && request.resource.data.orderId is string
+        && request.resource.data.discountAmount is int
+        && request.resource.data.discountAmount >= 0;
+      allow update, delete: if false;
+    }
+
     match /app_settings/{settingId} {
+      allow read: if true;
+      allow write: if admin();
+    }
+
+    match /banners/{bannerId} {
       allow read: if true;
       allow write: if admin();
     }
@@ -87,10 +169,14 @@ service cloud.firestore {
         && request.resource.data.phone is string
         && request.resource.data.points == 0
         && request.resource.data.role == 'customer';
-      allow update: if owner(userId) && safeUserFieldsOnly();
+      allow update: if owner(userId) && (safeUserFieldsOnly() || safeUserPointsDeduction());
       allow delete: if false;
 
       match /fcmTokens/{tokenId} {
+        allow read, create, update, delete: if owner(userId);
+      }
+
+      match /login_sessions/{sessionId} {
         allow read, create, update, delete: if owner(userId);
       }
     }
@@ -115,7 +201,7 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if ownsExisting();
       allow create: if safeOrderCreate();
-      allow update: if admin() || (ownsExisting()
+      allow update: if admin() || safeManualTransferOrderUpdate() || (ownsExisting()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasReview', 'reviewId', 'reviewedAt', 'updatedAt'])
         && request.resource.data.hasReview == true
         && (!resource.data.keys().hasAll(['hasReview']) || resource.data.hasReview == false)
@@ -132,7 +218,7 @@ service cloud.firestore {
         && request.resource.data.status == 'pending'
         && request.resource.data.amount is int
         && request.resource.data.amount > 0;
-      allow update: if admin();
+      allow update: if admin() || safeManualTransferPaymentUpdate();
       allow delete: if false;
     }
 
@@ -142,6 +228,8 @@ service cloud.firestore {
       allow update: if ownsExisting()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'isRead',
+          'status',
+          'readAt',
           'updatedAt'
         ]);
     }
@@ -179,9 +267,37 @@ service cloud.firestore {
     match /support_tickets/{ticketId} {
       allow read: if ownsExisting() || admin();
       allow create: if ownsIncoming()
-        && request.resource.data.status == 'processing';
-      allow update: if admin();
+        && request.resource.data.status in ['open', 'new', 'pending', 'processing'];
+      allow update: if admin() || (ownsExisting()
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage',
+          'lastMessageAt',
+          'unreadByAdmin',
+          'unreadByUser',
+          'updatedAt',
+          'status'
+        ])
+        && request.resource.data.status in ['open', 'new', 'pending', 'processing', 'closed']);
       allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if owner(get(/databases/$(database)/documents/support_tickets/$(ticketId)).data.userId) || admin();
+        allow create: if signedIn()
+          && getAfter(/databases/$(database)/documents/support_tickets/$(ticketId)).data.userId == request.auth.uid
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.senderRole == 'user'
+          && request.resource.data.senderType == 'user'
+          && request.resource.data.message is string
+          && request.resource.data.text is string;
+        allow update: if admin() || (signedIn()
+          && get(/databases/$(database)/documents/support_tickets/$(ticketId)).data.userId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'isRead',
+            'readByUser'
+          ]));
+        allow delete: if false;
+      }
     }
 
     match /{document=**} {

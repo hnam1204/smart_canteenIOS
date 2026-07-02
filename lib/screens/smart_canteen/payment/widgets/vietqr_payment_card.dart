@@ -101,6 +101,7 @@ class VietQRPaymentCard extends StatelessWidget {
 
           PaymentCountdownWidget(
             secondsRemaining: secondsRemaining,
+            expired: status == PaymentStatus.expired,
             onRefresh: onRefresh,
           ),
           const SizedBox(height: 12),
@@ -140,11 +141,7 @@ class _QrSection extends StatelessWidget {
         // Tappable QR card → opens fullscreen preview
         GestureDetector(
           onTap: () => _openFullscreen(context),
-          child: _QrImageCard(
-            payment: payment,
-            size: qrSize,
-            onRetry: onRetry,
-          ),
+          child: _QrImageCard(payment: payment, size: qrSize, onRetry: onRetry),
         ),
         const SizedBox(height: 10),
         // Action buttons row under the QR
